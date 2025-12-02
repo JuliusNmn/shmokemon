@@ -1,0 +1,12 @@
+[package]
+name = "two_dbuddy"
+version = "0.1.0"
+edition = "2021"
+default-run = "two_dbuddy"
+
+[dependencies]
+macroquad = "0.4"
+rapier2d = "0.22"
+rand = "0.8"
+burn = "0.19.1"
+burn-ndarray = "0.19.1"

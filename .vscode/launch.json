@@ -1,0 +1,71 @@
+{
+  // Use IntelliSense to learn about possible attributes.
+  // Hover to view descriptions of existing attributes.
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Debug visualize (cargo run --bin visualize)",
+      "type": "lldb",                // or "cppvsdbg" on Windows
+      "request": "launch",
+      "program": "${workspaceFolder}/target/debug/visualize",
+      "args": [],
+      "cwd": "${workspaceFolder}",
+      "env": {
+        "RUST_BACKTRACE": "1"
+      },
+      "cargo": {
+        "args": [
+          "run",
+          "--bin",
+          "visualize"
+        ],
+        "filter": {
+          "kind": "bin",
+          "name": "visualize"
+        }
+      },
+      "sourceLanguages": ["rust"]
+    },
+    {
+      "name": "Debug default binary (cargo run)",
+      "type": "lldb",
+      "request": "launch",
+      "program": "${workspaceFolder}/target/debug/2dbuddy",
+      "args": [],
+      "cwd": "${workspaceFolder}",
+      "env": {
+        "RUST_BACKTRACE": "1"
+      },
+      "cargo": {
+        "args": [
+          "run"
+        ],
+        "filter": {
+          "kind": "bin"
+        }
+      },
+      "sourceLanguages": ["rust"]
+    },
+    {
+      "name": "Debug tests (cargo test)",
+      "type": "lldb",
+      "request": "launch",
+      "program": "${workspaceFolder}/target/debug/2dbuddy-*",
+      "args": [],
+      "cwd": "${workspaceFolder}",
+      "env": {
+        "RUST_BACKTRACE": "1"
+      },
+      "cargo": {
+        "args": [
+          "test",
+          "--no-run"
+        ],
+        "filter": {
+          "kind": "test"
+        }
+      },
+      "sourceLanguages": ["rust"]
+    }
+  ]
+}
