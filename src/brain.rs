@@ -109,8 +109,7 @@ impl Brain {
     /// Create a random sparsity mask
     /// Returns a tensor where elements are 1.0 if they should be kept, 0.0 if zeroed.
     /// Each entry is independently set to zero with probability `sparsity`.
-    #[cfg(feature = "mps")]
-    fn create_random_mask(rows: usize, cols: usize, sparsity: f32, device: &LibTorchDevice) -> Tensor<B, 2> {
+    fn create_random_mask(rows: usize, cols: usize, sparsity: f32, device: &<B as burn::tensor::backend::Backend>::Device) -> Tensor<B, 2> {
         let mut rng = rand::thread_rng();
         let mut mask_data = Vec::with_capacity(rows * cols);
 
