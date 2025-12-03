@@ -1,8 +1,30 @@
 use macroquad::prelude::*;
 use two_dbuddy::{
     BuddyPartShape, SimulationWorld, FLOOR_HALF_EXTENTS, FLOOR_HEIGHT, PIXELS_PER_METER,
-    BuddyIO, BuddyAction, Brain,
+    BuddyIO, BuddyAction, Brain, SPARSITY_INPUT_HIDDEN, SPARSITY_HIDDEN_OUTPUT,
 };
+
+/// Slider state for brain initialization parameters
+struct BrainInitParams {
+    ih_gain: f32,
+    ho_gain: f32,
+    ih_sparsity: f32,
+    ho_sparsity: f32,
+    /// Which slider is currently being dragged (if any)
+    active_slider: Option<usize>,
+}
+
+impl Default for BrainInitParams {
+    fn default() -> Self {
+        Self {
+            ih_gain: 4.0,
+            ho_gain: 5.0,
+            ih_sparsity: SPARSITY_INPUT_HIDDEN,
+            ho_sparsity: SPARSITY_HIDDEN_OUTPUT,
+            active_slider: None,
+        }
+    }
+}
 
 const FRAMES_PER_STEP: usize = 2;
 
@@ -14,8 +36,14 @@ async fn main() {
         .nth(1)
         .and_then(|arg| arg.parse::<usize>().ok());
 
+    let mut init_params = BrainInitParams::default();
     let mut world = SimulationWorld::new();
-    let mut brain = Brain::new_random_sparse();
+    let mut brain = Brain::new(
+        init_params.ih_gain as f64,
+        init_params.ho_gain as f64,
+        init_params.ih_sparsity,
+        init_params.ho_sparsity,
+    );
     let mut steps = 0usize;
     let mut frame = 0usize;
     loop {
@@ -50,9 +78,17 @@ async fn main() {
             frame = 0;
         }
         
+        // Draw sliders above reset buttons
+        draw_init_param_sliders(&mut init_params);
+        
         if draw_reset_button() {
-            // Reset brain button clicked - new brain and reset simulation
-            brain = Brain::new_random_sparse();
+            // Reset brain button clicked - new brain with current slider values
+            brain = Brain::new(
+                init_params.ih_gain as f64,
+                init_params.ho_gain as f64,
+                init_params.ih_sparsity,
+                init_params.ho_sparsity,
+            );
             world = SimulationWorld::new();
             steps = 0;
             frame = 0;
@@ -510,6 +546,104 @@ fn draw_activation_vector(x: f32, y: f32, activations: &[f32], title: &str) {
             ..Default::default()
         },
     );
+}
+
+/// Draw sliders for brain initialization parameters
+fn draw_init_param_sliders(params: &mut BrainInitParams) {
+    let panel_x = screen_width() - 280.0;
+    let panel_y = screen_height() - 260.0;
+    let panel_width = 260.0;
+    let panel_height = 150.0;
+    
+    // Draw background panel
+    draw_rectangle(panel_x, panel_y, panel_width, panel_height, Color::from_rgba(0, 0, 0, 180));
+    draw_rectangle_lines(panel_x, panel_y, panel_width, panel_height, 1.0, Color::from_rgba(80, 80, 80, 255));
+    
+    // Title
+    draw_text("Brain Init Params", panel_x + 10.0, panel_y + 20.0, 18.0, Color::from_rgba(200, 180, 255, 255));
+    
+    let slider_x = panel_x + 100.0;
+    let slider_width = 100.0;
+    let slider_height = 8.0;
+    let label_x = panel_x + 10.0;
+    let value_x = panel_x + 210.0;
+    
+    let sliders = [
+        ("IH Gain", &mut params.ih_gain, 0.0, 10.0, 0),
+        ("HO Gain", &mut params.ho_gain, 0.0, 10.0, 1),
+        ("IH Sparsity", &mut params.ih_sparsity, 0.0, 1.0, 2),
+        ("HO Sparsity", &mut params.ho_sparsity, 0.0, 1.0, 3),
+    ];
+    
+    let mouse_pos = mouse_position();
+    let mouse_pressed = is_mouse_button_down(MouseButton::Left);
+    let mouse_just_released = is_mouse_button_released(MouseButton::Left);
+    
+    // Release active slider if mouse released
+    if mouse_just_released {
+        params.active_slider = None;
+    }
+    
+    for (i, (label, value, min, max, idx)) in sliders.into_iter().enumerate() {
+        let y = panel_y + 35.0 + i as f32 * 28.0;
+        
+        // Draw label
+        draw_text(label, label_x, y + 12.0, 14.0, WHITE);
+        
+        // Draw slider track
+        let track_y = y + 5.0;
+        draw_rectangle(slider_x, track_y, slider_width, slider_height, Color::from_rgba(60, 60, 60, 255));
+        
+        // Calculate slider position
+        let normalized = (*value - min) / (max - min);
+        let handle_x = slider_x + normalized * slider_width;
+        let handle_width = 10.0;
+        let handle_height = 16.0;
+        
+        // Draw filled portion
+        draw_rectangle(slider_x, track_y, normalized * slider_width, slider_height, Color::from_rgba(120, 100, 200, 255));
+        
+        // Check if mouse is over the slider track (expand hit area vertically)
+        let hit_area_y = track_y - 8.0;
+        let hit_area_height = slider_height + 16.0;
+        let is_over_track = mouse_pos.0 >= slider_x && mouse_pos.0 <= slider_x + slider_width
+            && mouse_pos.1 >= hit_area_y && mouse_pos.1 <= hit_area_y + hit_area_height;
+        
+        // Start dragging if mouse pressed over track
+        if mouse_pressed && is_over_track && params.active_slider.is_none() {
+            params.active_slider = Some(idx);
+        }
+        
+        // Update value if this slider is being dragged
+        if params.active_slider == Some(idx) && mouse_pressed {
+            let new_normalized = ((mouse_pos.0 - slider_x) / slider_width).clamp(0.0, 1.0);
+            *value = min + new_normalized * (max - min);
+        }
+        
+        // Draw handle
+        let handle_color = if params.active_slider == Some(idx) {
+            Color::from_rgba(180, 160, 255, 255)
+        } else if is_over_track {
+            Color::from_rgba(160, 140, 220, 255)
+        } else {
+            Color::from_rgba(140, 120, 200, 255)
+        };
+        draw_rectangle(
+            handle_x - handle_width / 2.0,
+            track_y - (handle_height - slider_height) / 2.0,
+            handle_width,
+            handle_height,
+            handle_color,
+        );
+        
+        // Draw value
+        let value_text = if max <= 1.0 {
+            format!("{:.2}", *value)
+        } else {
+            format!("{:.1}", *value)
+        };
+        draw_text(&value_text, value_x, y + 12.0, 14.0, Color::from_rgba(180, 180, 180, 255));
+    }
 }
 
 /// Draw restart button and return true if clicked
