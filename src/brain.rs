@@ -126,24 +126,6 @@ impl Brain {
         mask_1d.reshape([rows, cols])
     }
     
-    #[cfg(not(feature = "mps"))]
-    fn create_random_mask(rows: usize, cols: usize, sparsity: f32, device: &NdArrayDevice) -> Tensor<B, 2> {
-        let mut rng = rand::thread_rng();
-        let mut mask_data = Vec::with_capacity(rows * cols);
-
-        for _ in 0..(rows * cols) {
-            let r: f32 = rng.gen();
-            if r < sparsity {
-                mask_data.push(0.0);
-            } else {
-                mask_data.push(1.0);
-            }
-        }
-
-        let mask_1d = Tensor::<B, 1>::from_data(mask_data.as_slice(), device);
-        mask_1d.reshape([rows, cols])
-    }
-    
     /// Forward pass through the network
     /// Takes a sense array (68 values) and outputs an action array (9 values)
     /// Outputs are linear (no activation function)
