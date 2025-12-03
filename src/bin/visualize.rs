@@ -8,6 +8,8 @@ const FRAMES_PER_STEP: usize = 2;
 
 #[macroquad::main("Rapier2D + Macroquad playground")]
 async fn main() {
+    request_new_screen_size(1400.0, 1000.0);
+    
     let step_limit = std::env::args()
         .nth(1)
         .and_then(|arg| arg.parse::<usize>().ok());

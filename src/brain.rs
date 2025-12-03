@@ -3,7 +3,7 @@ use burn::tensor::Tensor;
 use burn::module::Param;
 use burn_ndarray::{NdArray, NdArrayDevice};
 use rand::Rng;
-
+use burn_tch::{LibTorch, LibTorchDevice};
 // Network architecture constants
 pub const INPUT_SIZE: usize = 68;  // From BuddyIO::sense_size()
 pub const HIDDEN_SIZE: usize = 50;
@@ -14,8 +14,8 @@ pub const OUTPUT_SIZE: usize = 9;  // From BuddyIO::action_size()
 pub const SPARSITY_INPUT_HIDDEN: f32 = 0.9;
 pub const SPARSITY_HIDDEN_OUTPUT: f32 = 0.9;
 
-/// Type alias for the backend we're using (NdArray for CPU)
-type B = NdArray;
+/// Type alias for the backend we're using
+type B = LibTorch;
 
 /// Brain for the buddy using a simple feedforward neural network
 /// Architecture: INPUT_SIZE -> HIDDEN_SIZE -> OUTPUT_SIZE
@@ -33,7 +33,7 @@ impl Brain {
     /// Uses XavierUniform initialization which is appropriate for angular velocities
     /// as it maintains smaller initial weights to avoid extreme rotations
     pub fn new_random() -> Self {
-        let device = NdArrayDevice::Cpu;
+        let device = LibTorchDevice::Mps;
         
         // Create linear layers with XavierUniform initialization
         // This initializer draws from U(-a, a) where a = gain * sqrt(6 / (fan_in + fan_out))
@@ -56,7 +56,7 @@ impl Brain {
     /// Each weight is independently set to zero with probability given by the
     /// sparsity constants above, so that on average ~80% of weights are zero.
     pub fn new_random_sparse() -> Self {
-        let device = NdArrayDevice::Cpu;
+        let device = LibTorchDevice::Mps;
         
         // Initialize layers with XavierUniform
         let mut input_hidden = LinearConfig::new(INPUT_SIZE, HIDDEN_SIZE)
@@ -90,7 +90,7 @@ impl Brain {
     /// Create a random sparsity mask
     /// Returns a tensor where elements are 1.0 if they should be kept, 0.0 if zeroed.
     /// Each entry is independently set to zero with probability `sparsity`.
-    fn create_random_mask(rows: usize, cols: usize, sparsity: f32, device: &NdArrayDevice) -> Tensor<B, 2> {
+    fn create_random_mask(rows: usize, cols: usize, sparsity: f32, device: &LibTorchDevice) -> Tensor<B, 2> {
         let mut rng = rand::thread_rng();
         let mut mask_data = Vec::with_capacity(rows * cols);
 
@@ -113,7 +113,7 @@ impl Brain {
     pub fn forward(&self, sense: &[f32]) -> Vec<f32> {
         assert_eq!(sense.len(), INPUT_SIZE, "Sense array must have {} elements", INPUT_SIZE);
         
-        let device = NdArrayDevice::Cpu;
+        let device = LibTorchDevice::Mps;
         
         // Convert input to Burn tensor [1, INPUT_SIZE]
         let input_tensor: Tensor<B, 1> = Tensor::from_floats(sense, &device);
@@ -121,7 +121,7 @@ impl Brain {
         
         // Forward pass: input -> hidden (with ReLU) -> output
         let hidden = self.input_hidden.forward(input_tensor);
-        let hidden = burn::tensor::activation::relu(hidden);
+        //let hidden = burn::tensor::activation::relu(hidden);
         let output = self.hidden_output.forward(hidden);
         
         // Convert output tensor back to Vec<f32>
@@ -134,15 +134,15 @@ impl Brain {
     pub fn forward_with_activations(&self, sense: &[f32]) -> (Vec<f32>, Vec<f32>) {
         assert_eq!(sense.len(), INPUT_SIZE, "Sense array must have {} elements", INPUT_SIZE);
         
-        let device = NdArrayDevice::Cpu;
+        let device = LibTorchDevice::Mps;
         
         // Convert input to Burn tensor [1, INPUT_SIZE]
         let input_tensor: Tensor<B, 1> = Tensor::from_floats(sense, &device);
         let input_tensor: Tensor<B, 2> = input_tensor.reshape([1, INPUT_SIZE]);
         
         // Forward pass with intermediate activations
-        let hidden_pre = self.input_hidden.forward(input_tensor);
-        let hidden = burn::tensor::activation::relu(hidden_pre);
+        let hidden = self.input_hidden.forward(input_tensor);
+        // let hidden = burn::tensor::activation::relu(hidden_pre);
         let output = self.hidden_output.forward(hidden.clone());
         
         // Convert tensors back to Vec<f32>
