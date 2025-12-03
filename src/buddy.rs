@@ -366,7 +366,7 @@ impl Buddy {
             .motor_model(MotorModel::ForceBased)
             .motor(0.0, 0.0, JOINT_STIFFNESS, JOINT_DAMPING)
             .motor_max_force(JOINT_MAX_FORCE)
-            .limits([-std::f32::consts::PI / 2.0, std::f32::consts::PI / 2.0])
+            .limits([-std::f32::consts::PI * 0.75, std::f32::consts::PI * 0.75])
             .build();
         impulse_joint_set.insert(parent, child, joint, true)
     }
