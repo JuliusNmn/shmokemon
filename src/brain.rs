@@ -3,7 +3,10 @@ use burn::tensor::Tensor;
 use burn::module::Param;
 use burn_ndarray::{NdArray, NdArrayDevice};
 use rand::Rng;
+
+#[cfg(feature = "mps")]
 use burn_tch::{LibTorch, LibTorchDevice};
+
 // Network architecture constants
 pub const INPUT_SIZE: usize = 68;  // From BuddyIO::sense_size()
 pub const HIDDEN_SIZE: usize = 50;
@@ -15,7 +18,23 @@ pub const SPARSITY_INPUT_HIDDEN: f32 = 0.9;
 pub const SPARSITY_HIDDEN_OUTPUT: f32 = 0.9;
 
 /// Type alias for the backend we're using
+/// Uses MPS (Metal) if available, otherwise falls back to CPU (NdArray)
+#[cfg(feature = "mps")]
 type B = LibTorch;
+
+#[cfg(not(feature = "mps"))]
+type B = NdArray;
+
+/// Helper to get the appropriate device
+#[cfg(feature = "mps")]
+fn get_device() -> LibTorchDevice {
+    LibTorchDevice::Mps
+}
+
+#[cfg(not(feature = "mps"))]
+fn get_device() -> NdArrayDevice {
+    NdArrayDevice::Cpu
+}
 
 /// Brain for the buddy using a simple feedforward neural network
 /// Architecture: INPUT_SIZE -> HIDDEN_SIZE -> OUTPUT_SIZE
@@ -33,7 +52,7 @@ impl Brain {
     /// Uses XavierUniform initialization which is appropriate for angular velocities
     /// as it maintains smaller initial weights to avoid extreme rotations
     pub fn new_random() -> Self {
-        let device = LibTorchDevice::Mps;
+        let device = get_device();
         
         // Create linear layers with XavierUniform initialization
         // This initializer draws from U(-a, a) where a = gain * sqrt(6 / (fan_in + fan_out))
@@ -56,7 +75,7 @@ impl Brain {
     /// Each weight is independently set to zero with probability given by the
     /// sparsity constants above, so that on average ~80% of weights are zero.
     pub fn new_random_sparse() -> Self {
-        let device = LibTorchDevice::Mps;
+        let device = get_device();
         
         // Initialize layers with XavierUniform
         let mut input_hidden = LinearConfig::new(INPUT_SIZE, HIDDEN_SIZE)
@@ -90,7 +109,26 @@ impl Brain {
     /// Create a random sparsity mask
     /// Returns a tensor where elements are 1.0 if they should be kept, 0.0 if zeroed.
     /// Each entry is independently set to zero with probability `sparsity`.
+    #[cfg(feature = "mps")]
     fn create_random_mask(rows: usize, cols: usize, sparsity: f32, device: &LibTorchDevice) -> Tensor<B, 2> {
+        let mut rng = rand::thread_rng();
+        let mut mask_data = Vec::with_capacity(rows * cols);
+
+        for _ in 0..(rows * cols) {
+            let r: f32 = rng.gen();
+            if r < sparsity {
+                mask_data.push(0.0);
+            } else {
+                mask_data.push(1.0);
+            }
+        }
+
+        let mask_1d = Tensor::<B, 1>::from_data(mask_data.as_slice(), device);
+        mask_1d.reshape([rows, cols])
+    }
+    
+    #[cfg(not(feature = "mps"))]
+    fn create_random_mask(rows: usize, cols: usize, sparsity: f32, device: &NdArrayDevice) -> Tensor<B, 2> {
         let mut rng = rand::thread_rng();
         let mut mask_data = Vec::with_capacity(rows * cols);
 
@@ -113,7 +151,7 @@ impl Brain {
     pub fn forward(&self, sense: &[f32]) -> Vec<f32> {
         assert_eq!(sense.len(), INPUT_SIZE, "Sense array must have {} elements", INPUT_SIZE);
         
-        let device = LibTorchDevice::Mps;
+        let device = get_device();
         
         // Convert input to Burn tensor [1, INPUT_SIZE]
         let input_tensor: Tensor<B, 1> = Tensor::from_floats(sense, &device);
@@ -134,7 +172,7 @@ impl Brain {
     pub fn forward_with_activations(&self, sense: &[f32]) -> (Vec<f32>, Vec<f32>) {
         assert_eq!(sense.len(), INPUT_SIZE, "Sense array must have {} elements", INPUT_SIZE);
         
-        let device = LibTorchDevice::Mps;
+        let device = get_device();
         
         // Convert input to Burn tensor [1, INPUT_SIZE]
         let input_tensor: Tensor<B, 1> = Tensor::from_floats(sense, &device);
@@ -266,8 +304,4 @@ mod tests {
         println!("Input-hidden sparsity: {:.2}%", ih_sparsity * 100.0);
         println!("Hidden-output sparsity: {:.2}%", ho_sparsity * 100.0);
     }
-    
-    // Removed triangular pattern test, since we now use random sparsity rather than a
-    // structured triangular mask. The `test_sparse_initialization` test above
-    // already verifies the sparsity level.
 }
