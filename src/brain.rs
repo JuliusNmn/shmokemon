@@ -49,21 +49,43 @@ pub struct Brain {
 
 impl Brain {
     /// Create a new brain with random weights using Burn's smart initialization
+    /// 
+    /// # Arguments
+    /// * `ih_gain` - Gain for input->hidden layer initialization
+    /// * `ho_gain` - Gain for hidden->output layer initialization
+    /// * `ih_sparsity` - Probability that input->hidden weights are zero (0.0 = dense, 1.0 = all zeros)
+    /// * `ho_sparsity` - Probability that hidden->output weights are zero (0.0 = dense, 1.0 = all zeros)
+    /// 
     /// Uses XavierUniform initialization which is appropriate for angular velocities
-    /// as it maintains smaller initial weights to avoid extreme rotations
-    pub fn new_random() -> Self {
+    /// as it maintains smaller initial weights to avoid extreme rotations.
+    /// Initializer draws from U(-a, a) where a = gain * sqrt(6 / (fan_in + fan_out))
+    pub fn new(ih_gain: f64, ho_gain: f64, ih_sparsity: f32, ho_sparsity: f32) -> Self {
         let device = get_device();
         
-        // Create linear layers with XavierUniform initialization
-        // This initializer draws from U(-a, a) where a = gain * sqrt(6 / (fan_in + fan_out))
-        // Helps maintain stable gradients and prevents extreme initial angular velocities
-        let input_hidden = LinearConfig::new(INPUT_SIZE, HIDDEN_SIZE)
-            .with_initializer(Initializer::XavierUniform { gain: 1.0 })
+        // Initialize layers with XavierUniform
+        let mut input_hidden = LinearConfig::new(INPUT_SIZE, HIDDEN_SIZE)
+            .with_initializer(Initializer::XavierUniform { gain: ih_gain })
             .init(&device);
         
-        let hidden_output = LinearConfig::new(HIDDEN_SIZE, OUTPUT_SIZE)
-            .with_initializer(Initializer::XavierUniform { gain: 2.0 })
+        let mut hidden_output = LinearConfig::new(HIDDEN_SIZE, OUTPUT_SIZE)
+            .with_initializer(Initializer::XavierUniform { gain: ho_gain })
             .init(&device);
+        
+        // Apply random sparsity to input->hidden weights if sparsity > 0
+        if ih_sparsity > 0.0 {
+            let ih_weights = input_hidden.weight.val();
+            let ih_mask = Self::create_random_mask(INPUT_SIZE, HIDDEN_SIZE, ih_sparsity, &device);
+            let ih_sparse_weights = ih_weights * ih_mask;
+            input_hidden.weight = Param::from_tensor(ih_sparse_weights);
+        }
+        
+        // Apply random sparsity to hidden->output weights if sparsity > 0
+        if ho_sparsity > 0.0 {
+            let ho_weights = hidden_output.weight.val();
+            let ho_mask = Self::create_random_mask(HIDDEN_SIZE, OUTPUT_SIZE, ho_sparsity, &device);
+            let ho_sparse_weights = ho_weights * ho_mask;
+            hidden_output.weight = Param::from_tensor(ho_sparse_weights);
+        }
         
         Self {
             input_hidden,
@@ -71,39 +93,17 @@ impl Brain {
         }
     }
     
+    /// Create a new brain with dense random weights (no sparsity)
+    /// Uses default gains of 1.0 for input->hidden and 2.0 for hidden->output
+    pub fn new_random() -> Self {
+        Self::new(1.0, 2.0, 0.0, 0.0)
+    }
+    
     /// Create a new brain with random sparse initialization
-    /// Each weight is independently set to zero with probability given by the
-    /// sparsity constants above, so that on average ~80% of weights are zero.
+    /// Uses the sparsity constants defined at module level (~90% zeros)
+    /// and higher gains to compensate for sparsity
     pub fn new_random_sparse() -> Self {
-        let device = get_device();
-        
-        // Initialize layers with XavierUniform
-        let mut input_hidden = LinearConfig::new(INPUT_SIZE, HIDDEN_SIZE)
-            .with_initializer(Initializer::XavierUniform { gain: 4.0 })
-            .init(&device);
-        
-        let mut hidden_output = LinearConfig::new(HIDDEN_SIZE, OUTPUT_SIZE)
-            .with_initializer(Initializer::XavierUniform { gain: 5.0 })
-            .init(&device);
-        
-        // Apply random sparsity to input->hidden weights
-        // Weight tensor shape is [in_features, out_features] = [INPUT_SIZE, HIDDEN_SIZE]
-        let ih_weights = input_hidden.weight.val();
-        let ih_mask = Self::create_random_mask(INPUT_SIZE, HIDDEN_SIZE, SPARSITY_INPUT_HIDDEN, &device);
-        let ih_sparse_weights = ih_weights * ih_mask;
-        input_hidden.weight = Param::from_tensor(ih_sparse_weights);
-        
-        // Apply random sparsity to hidden->output weights
-        // Weight tensor shape is [in_features, out_features] = [HIDDEN_SIZE, OUTPUT_SIZE]
-        let ho_weights = hidden_output.weight.val();
-        let ho_mask = Self::create_random_mask(HIDDEN_SIZE, OUTPUT_SIZE, SPARSITY_HIDDEN_OUTPUT, &device);
-        let ho_sparse_weights = ho_weights * ho_mask;
-        hidden_output.weight = Param::from_tensor(ho_sparse_weights);
-        
-        Self {
-            input_hidden,
-            hidden_output,
-        }
+        Self::new(4.0, 5.0, SPARSITY_INPUT_HIDDEN, SPARSITY_HIDDEN_OUTPUT)
     }
     
     /// Create a random sparsity mask
