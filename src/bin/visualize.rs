@@ -1,6 +1,6 @@
 use macroquad::prelude::*;
 use two_dbuddy::{
-    BuddyPartShape, SimulationWorld, FLOOR_HALF_EXTENTS, FLOOR_HEIGHT, PIXELS_PER_METER,
+    BuddyPartShape, GrabbableWorld, FLOOR_HALF_EXTENTS, FLOOR_HEIGHT, PIXELS_PER_METER,
     BuddyIO, BuddyAction, Brain, SPARSITY_INPUT_HIDDEN, SPARSITY_HIDDEN_OUTPUT,
 };
 
@@ -37,7 +37,7 @@ async fn main() {
         .and_then(|arg| arg.parse::<usize>().ok());
 
     let mut init_params = BrainInitParams::default();
-    let mut world = SimulationWorld::new();
+    let mut world = GrabbableWorld::new();
     let mut brain = Brain::new(
         init_params.ih_gain as f64,
         init_params.ho_gain as f64,
@@ -52,6 +52,25 @@ async fn main() {
                 break;
             }
         }
+        // Handle mouse input for grabbing
+        let mouse_pos = mouse_position();
+        let world_mouse_pos = world.screen_to_world(mouse_pos.0, mouse_pos.1, screen_width(), screen_height());
+        
+        // Check for mouse button press to start grab
+        if is_mouse_button_pressed(MouseButton::Left) {
+            world.try_grab_at_point(world_mouse_pos);
+        }
+        
+        // Update mouse position if grabbing (must be called every frame, before physics step)
+        if world.is_grabbing() {
+            world.update_mouse_position(world_mouse_pos);
+        }
+        
+        // Release grab on mouse button release
+        if is_mouse_button_released(MouseButton::Left) {
+            world.release_grab();
+        }
+        
         if (frame % FRAMES_PER_STEP) == 0 {
             // Get sense data and use brain to generate action
             let sense = world.buddy_sense();
@@ -59,6 +78,11 @@ async fn main() {
             let action_flat = brain.forward(&sense_flat);
             let action = BuddyIO::unflatten_action(&action_flat);
             world.apply_buddy_action(&action);
+            
+            // Update mouse position again right before physics step to ensure it's current
+            if world.is_grabbing() {
+                world.update_mouse_position(world_mouse_pos);
+            }
             
             world.step();
             steps += 1;
@@ -73,7 +97,7 @@ async fn main() {
         // Check for button clicks
         if draw_world(&world, steps, step_limit, &sense_flat, &action, &brain, &hidden_activations) {
             // Restart button clicked - reset simulation with same brain
-            world = SimulationWorld::new();
+            world = GrabbableWorld::new();
             steps = 0;
             frame = 0;
         }
@@ -89,7 +113,7 @@ async fn main() {
                 init_params.ih_sparsity,
                 init_params.ho_sparsity,
             );
-            world = SimulationWorld::new();
+            world = GrabbableWorld::new();
             steps = 0;
             frame = 0;
         }
@@ -101,7 +125,7 @@ async fn main() {
 }
 
 fn draw_world(
-    world: &SimulationWorld, 
+    world: &GrabbableWorld, 
     steps: usize, 
     limit: Option<usize>,
     sense_flat: &[f32],
@@ -155,7 +179,7 @@ fn draw_floor() {
     draw_rectangle(x, y, width, height, DARKGRAY);
 }
 
-fn draw_buddy(world: &SimulationWorld) {
+fn draw_buddy(world: &GrabbableWorld) {
     for part in world.buddy().parts() {
         if let Some(snapshot) = world.body_snapshot(part.handle) {
             match part.shape {
@@ -698,7 +722,7 @@ fn draw_reset_button() -> bool {
 }
 
 /// Draw torque history plot in bottom left corner
-fn draw_torque_history(world: &SimulationWorld) {
+fn draw_torque_history(world: &GrabbableWorld) {
     let panel_x = 20.0;
     let panel_y = screen_height() - 220.0;
     let panel_width = 400.0;

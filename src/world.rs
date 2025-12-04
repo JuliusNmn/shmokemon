@@ -11,15 +11,16 @@ pub struct SimulationWorld {
     pipeline: PhysicsPipeline,
     gravity: Vector<Real>,
     integration_parameters: IntegrationParameters,
-    island_manager: IslandManager,
+    pub(crate) island_manager: IslandManager,
     broad_phase: DefaultBroadPhase,
     narrow_phase: NarrowPhase,
-    rigid_body_set: RigidBodySet,
-    collider_set: ColliderSet,
-    impulse_joint_set: ImpulseJointSet,
-    multibody_joint_set: MultibodyJointSet,
+    query_pipeline: QueryPipeline,
+    pub(crate) rigid_body_set: RigidBodySet,
+    pub(crate) collider_set: ColliderSet,
+    pub(crate) impulse_joint_set: ImpulseJointSet,
+    pub(crate) multibody_joint_set: MultibodyJointSet,
     ccd_solver: CCDSolver,
-    buddy: Buddy,
+    pub(crate) buddy: Buddy,
     time: Real,
     torque_history: VecDeque<Real>,
 }
@@ -65,6 +66,7 @@ impl SimulationWorld {
             island_manager: IslandManager::new(),
             broad_phase: DefaultBroadPhase::new(),
             narrow_phase: NarrowPhase::new(),
+            query_pipeline: QueryPipeline::new(),
             rigid_body_set,
             collider_set,
             impulse_joint_set,
@@ -77,6 +79,9 @@ impl SimulationWorld {
     }
 
     pub fn step(&mut self) {
+        // Update query pipeline
+        self.query_pipeline.update(&self.collider_set);
+        
         let physics_hooks = ();
         let event_handler = ();
         self.pipeline.step(
