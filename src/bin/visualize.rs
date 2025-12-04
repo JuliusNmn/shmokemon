@@ -130,6 +130,9 @@ fn draw_world(
     // Draw neural network visualizations
     draw_network_visualizations(brain, hidden_activations);
     
+    // Draw torque history plot in bottom left corner
+    draw_torque_history(world);
+    
     draw_text(
         "press Ctrl+C to exit",
         20.0,
@@ -692,4 +695,93 @@ fn draw_reset_button() -> bool {
     draw_text("Reset Brain", button_x + 12.0, button_y + 23.0, 20.0, WHITE);
     
     is_hovered && is_mouse_button_pressed(MouseButton::Left)
+}
+
+/// Draw torque history plot in bottom left corner
+fn draw_torque_history(world: &SimulationWorld) {
+    let panel_x = 20.0;
+    let panel_y = screen_height() - 220.0;
+    let panel_width = 400.0;
+    let panel_height = 180.0;
+    
+    // Draw background panel
+    draw_rectangle(panel_x, panel_y, panel_width, panel_height, Color::from_rgba(0, 0, 0, 180));
+    draw_rectangle_lines(panel_x, panel_y, panel_width, panel_height, 1.0, Color::from_rgba(80, 80, 80, 255));
+    
+    // Title
+    draw_text("Torque History (last 1000 steps)", panel_x + 10.0, panel_y + 20.0, 18.0, YELLOW);
+    
+    let torque_history = world.torque_history();
+    if torque_history.is_empty() {
+        draw_text("No data yet", panel_x + 10.0, panel_y + 50.0, 16.0, GRAY);
+        return;
+    }
+    
+    // Find min and max torque values for scaling (convert Real to f32)
+    let min_torque = torque_history.iter().map(|&v| v as f32).fold(f32::INFINITY, f32::min);
+    let max_torque = torque_history.iter().map(|&v| v as f32).fold(f32::NEG_INFINITY, f32::max);
+    let torque_range = (max_torque - min_torque).max(0.001); // Avoid division by zero
+    
+    // Draw plot area
+    let plot_x = panel_x + 10.0;
+    let plot_y = panel_y + 40.0;
+    let plot_width = panel_width - 20.0;
+    let plot_height = panel_height - 60.0;
+    
+    // Draw background grid
+    let grid_color = Color::from_rgba(40, 40, 40, 255);
+    // Horizontal grid lines (5 lines)
+    for i in 0..=5 {
+        let y = plot_y + (i as f32 / 5.0) * plot_height;
+        draw_line(plot_x, y, plot_x + plot_width, y, 1.0, grid_color);
+    }
+    // Vertical grid lines (10 lines)
+    for i in 0..=10 {
+        let x = plot_x + (i as f32 / 10.0) * plot_width;
+        draw_line(x, plot_y, x, plot_y + plot_height, 1.0, grid_color);
+    }
+    
+    // Draw min/max labels
+    draw_text(&format!("Min: {:.2}", min_torque), plot_x, plot_y + plot_height + 15.0, 12.0, GRAY);
+    draw_text(&format!("Max: {:.2}", max_torque), plot_x, plot_y + plot_height + 30.0, 12.0, GRAY);
+    
+    // Draw current value
+    if let Some(current) = torque_history.back() {
+        draw_text(&format!("Current: {:.2}", *current as f32), plot_x + 100.0, plot_y + plot_height + 15.0, 12.0, YELLOW);
+    }
+    
+    // Draw the torque line
+    let history_len = torque_history.len();
+    if history_len > 1 {
+        let line_color = Color::from_rgba(100, 200, 255, 255);
+        
+        // Draw line segments
+        for i in 0..(history_len - 1) {
+            let torque1 = torque_history[i] as f32;
+            let torque2 = torque_history[i + 1] as f32;
+            
+            // Normalize torque values to 0..1 range
+            let normalized1 = (torque1 - min_torque) / torque_range;
+            let normalized2 = (torque2 - min_torque) / torque_range;
+            
+            // Convert to screen coordinates (flip Y because screen Y increases downward)
+            let x1 = plot_x + (i as f32 / (history_len - 1) as f32) * plot_width;
+            let y1 = plot_y + plot_height - normalized1 * plot_height;
+            let x2 = plot_x + ((i + 1) as f32 / (history_len - 1) as f32) * plot_width;
+            let y2 = plot_y + plot_height - normalized2 * plot_height;
+            
+            draw_line(x1, y1, x2, y2, 2.0, line_color);
+        }
+        
+        // Draw a point for the most recent value
+        if let Some(current) = torque_history.back() {
+            let normalized = (*current as f32 - min_torque) / torque_range;
+            let x = plot_x + plot_width;
+            let y = plot_y + plot_height - normalized * plot_height;
+            draw_circle(x, y, 3.0, YELLOW);
+        }
+    }
+    
+    // Draw axes labels
+    draw_text("Time (steps)", plot_x + plot_width / 2.0 - 50.0, plot_y + plot_height + 30.0, 12.0, GRAY);
 }

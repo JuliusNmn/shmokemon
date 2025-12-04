@@ -1,4 +1,5 @@
 use rapier2d::{geometry::DefaultBroadPhase, prelude::*};
+use std::collections::VecDeque;
 use crate::buddy::Buddy;
 use crate::physics::{
     BUDDY_SPAWN_HEIGHT, FIXED_TIME_STEP, FLOOR_HALF_EXTENTS, FLOOR_HEIGHT, 
@@ -20,6 +21,7 @@ pub struct SimulationWorld {
     ccd_solver: CCDSolver,
     buddy: Buddy,
     time: Real,
+    torque_history: VecDeque<Real>,
 }
 
 impl SimulationWorld {
@@ -70,6 +72,7 @@ impl SimulationWorld {
             ccd_solver: CCDSolver::new(),
             buddy,
             time: 0.0,
+            torque_history: VecDeque::with_capacity(1000),
         }
     }
 
@@ -92,6 +95,27 @@ impl SimulationWorld {
             &event_handler,
         );
         self.time += self.integration_parameters.dt;
+        
+        // Calculate total applied torque from all buddy joints
+        let mut total_torque = 0.0;
+        for joint_handle in self.buddy.joints() {
+            if let Some(joint) = self.impulse_joint_set.get(joint_handle) {
+                if let Some(rev) = joint.data.as_revolute() {
+                    if let Some(motor) = rev.data.motor(JointAxis::AngX) {
+                        let applied_impulse = motor.impulse;
+                        let applied_torque = applied_impulse / self.integration_parameters.dt;
+                        total_torque += applied_torque.abs();
+                    }
+                }
+            }
+        }
+        
+        // Store torque in history buffer (keep last 1000 values)
+        self.torque_history.push_back(total_torque);
+        if self.torque_history.len() > 1000 {
+            self.torque_history.pop_front();
+        }
+        
     }
 
     pub fn buddy(&self) -> &Buddy {
@@ -140,5 +164,10 @@ impl SimulationWorld {
     pub fn apply_buddy_action_flat(&mut self, flat_action: &[f32]) {
         let action = BuddyIO::unflatten_action(flat_action);
         self.apply_buddy_action(&action);
+    }
+    
+    /// Get the torque history buffer (last 1000 torque values)
+    pub fn torque_history(&self) -> &VecDeque<Real> {
+        &self.torque_history
     }
 }
