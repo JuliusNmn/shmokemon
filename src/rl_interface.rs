@@ -210,15 +210,16 @@ impl BuddyIO {
         };
         
         let factor = 1.0;
-        set_motor(buddy.neck_joint, action.neck_joint * factor);
-        set_motor(buddy.front_shoulder_joint, action.front_shoulder_joint * factor);
-        set_motor(buddy.front_elbow_joint, action.front_elbow_joint * factor);
-        set_motor(buddy.back_shoulder_joint, action.back_shoulder_joint * factor);
-        set_motor(buddy.back_elbow_joint, action.back_elbow_joint * factor);
-        set_motor(buddy.front_hip_joint, action.front_hip_joint * factor);
-        set_motor(buddy.front_knee_joint, action.front_knee_joint * factor);
-        set_motor(buddy.back_hip_joint, action.back_hip_joint * factor);
-        set_motor(buddy.back_knee_joint, action.back_knee_joint * factor);
+        let max_velocity = 20.0;
+        set_motor(buddy.neck_joint, (action.neck_joint * factor).clamp(-max_velocity, max_velocity));
+        set_motor(buddy.front_shoulder_joint, (action.front_shoulder_joint * factor).clamp(-max_velocity, max_velocity));
+        set_motor(buddy.front_elbow_joint, (action.front_elbow_joint * factor).clamp(-max_velocity, max_velocity));
+        set_motor(buddy.back_shoulder_joint, (action.back_shoulder_joint * factor).clamp(-max_velocity, max_velocity));
+        set_motor(buddy.back_elbow_joint, (action.back_elbow_joint * factor).clamp(-max_velocity, max_velocity));
+        set_motor(buddy.front_hip_joint, (action.front_hip_joint * factor).clamp(-max_velocity, max_velocity));
+        set_motor(buddy.front_knee_joint, (action.front_knee_joint * factor).clamp(-max_velocity, max_velocity));
+        set_motor(buddy.back_hip_joint, (action.back_hip_joint * factor).clamp(-max_velocity, max_velocity));
+        set_motor(buddy.back_knee_joint, (action.back_knee_joint * factor).clamp(-max_velocity, max_velocity));
     }
     
     /// Get the size of the flattened sense array
