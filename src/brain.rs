@@ -378,6 +378,70 @@ impl Brain {
 
         Ok(brain)
     }
+    
+    /// Create a mutated copy of this brain, suitable for use in genetic algorithms.
+    /// Weights and biases are perturbed with additive noise while preserving tensor shapes.
+    /// `mutation_rate` controls the probability that any given parameter is mutated,
+    /// `mutation_strength` controls the maximum absolute perturbation applied.
+    pub fn mutated(&self, mutation_rate: f32, mutation_strength: f32) -> Self {
+        let device = get_device();
+
+        // Helper to mutate an arbitrary-rank tensor while preserving shape.
+        fn mutate_tensor<BK, const D: usize>(
+            tensor: &Tensor<BK, D>,
+            mutation_rate: f32,
+            mutation_strength: f32,
+            device: &<BK as burn::tensor::backend::Backend>::Device,
+        ) -> Tensor<BK, D>
+        where
+            BK: burn::tensor::backend::Backend,
+        {
+            let shape = tensor.shape();
+            let mut data = tensor.clone().into_data().to_vec::<f32>().unwrap();
+
+            let mut rng = rand::thread_rng();
+            for v in data.iter_mut() {
+                let r: f32 = rng.gen();
+                if r < mutation_rate {
+                    let noise = (rng.gen::<f32>() * 2.0 - 1.0) * mutation_strength;
+                    *v += noise;
+                }
+            }
+
+            let flat = Tensor::<BK, 1>::from_floats(data.as_slice(), device);
+            flat.reshape(shape)
+        }
+
+        // Start from a fresh brain with the same architecture and then overwrite
+        // its parameters with mutated copies of this brain's parameters.
+        let mut brain = Brain::new(1.0, 1.0, 0.0, 0.0);
+
+        // Mutate input->hidden weights and bias
+        let ih_w_mut = mutate_tensor(&self.input_hidden.weight.val(), mutation_rate, mutation_strength, &device);
+        let ih_b_src = self
+            .input_hidden
+            .bias
+            .as_ref()
+            .expect("input_hidden bias missing");
+        let ih_b_mut = mutate_tensor(&ih_b_src.val(), mutation_rate, mutation_strength, &device);
+
+        brain.input_hidden.weight = Param::from_tensor(ih_w_mut);
+        brain.input_hidden.bias = Some(Param::from_tensor(ih_b_mut));
+
+        // Mutate hidden->output weights and bias
+        let ho_w_mut = mutate_tensor(&self.hidden_output.weight.val(), mutation_rate, mutation_strength, &device);
+        let ho_b_src = self
+            .hidden_output
+            .bias
+            .as_ref()
+            .expect("hidden_output bias missing");
+        let ho_b_mut = mutate_tensor(&ho_b_src.val(), mutation_rate, mutation_strength, &device);
+
+        brain.hidden_output.weight = Param::from_tensor(ho_w_mut);
+        brain.hidden_output.bias = Some(Param::from_tensor(ho_b_mut));
+
+        brain
+    }
 }
 
 #[cfg(test)]
@@ -442,6 +506,51 @@ mod tests {
         
         println!("Input-hidden sparsity: {:.2}%", ih_sparsity * 100.0);
         println!("Hidden-output sparsity: {:.2}%", ho_sparsity * 100.0);
+    }
+
+    #[test]
+    fn test_mutation_preserves_shapes() {
+        let brain = Brain::new_random_sparse();
+        let mutated = brain.mutated(0.1, 0.5);
+
+        let ih_w_shape_orig = brain.input_hidden.weight.val().shape();
+        let ih_b_shape_orig = brain
+            .input_hidden
+            .bias
+            .as_ref()
+            .expect("input_hidden bias missing")
+            .val()
+            .shape();
+        let ho_w_shape_orig = brain.hidden_output.weight.val().shape();
+        let ho_b_shape_orig = brain
+            .hidden_output
+            .bias
+            .as_ref()
+            .expect("hidden_output bias missing")
+            .val()
+            .shape();
+
+        let ih_w_shape_mut = mutated.input_hidden.weight.val().shape();
+        let ih_b_shape_mut = mutated
+            .input_hidden
+            .bias
+            .as_ref()
+            .expect("input_hidden bias missing")
+            .val()
+            .shape();
+        let ho_w_shape_mut = mutated.hidden_output.weight.val().shape();
+        let ho_b_shape_mut = mutated
+            .hidden_output
+            .bias
+            .as_ref()
+            .expect("hidden_output bias missing")
+            .val()
+            .shape();
+
+        assert_eq!(ih_w_shape_orig, ih_w_shape_mut);
+        assert_eq!(ih_b_shape_orig, ih_b_shape_mut);
+        assert_eq!(ho_w_shape_orig, ho_w_shape_mut);
+        assert_eq!(ho_b_shape_orig, ho_b_shape_mut);
     }
 
     #[test]
