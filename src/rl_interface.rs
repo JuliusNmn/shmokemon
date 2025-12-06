@@ -202,7 +202,7 @@ impl BuddyIO {
     ) {
         // Helper to set motor velocity for a joint
         let mut set_motor = |joint_handle: ImpulseJointHandle, velocity: f32| {
-            if let Some(joint) = impulse_joint_set.get_mut(joint_handle) {
+            if let Some(joint) = impulse_joint_set.get_mut(joint_handle, true) {
                 if let Some(rev) = joint.data.as_revolute_mut() {
                     rev.data.set_motor_velocity(JointAxis::AngX, velocity, 1.0);
                 }
