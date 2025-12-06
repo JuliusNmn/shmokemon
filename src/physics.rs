@@ -13,7 +13,7 @@ pub const FLOOR_HALF_EXTENTS: [Real; 2] = [2.5, 0.1];
 pub const FLOOR_HEIGHT: Real = -1.5;
 
 // Buddy spawn
-pub const BUDDY_SPAWN_HEIGHT: Real = 1.0;
+pub const BUDDY_SPAWN_HEIGHT: Real = 0.2;
 
 #[derive(Debug, Clone)]
 pub struct RigidBodySnapshot {
