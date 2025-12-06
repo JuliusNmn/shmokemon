@@ -3,6 +3,8 @@ use burn::tensor::Tensor;
 use burn::module::Param;
 use burn_ndarray::{NdArray, NdArrayDevice};
 use rand::Rng;
+use std::fs::File;
+use std::io::{self, Read, Write, BufReader, BufWriter};
 
 #[cfg(feature = "mps")]
 use burn_tch::{LibTorch, LibTorchDevice};
@@ -221,11 +223,167 @@ impl Brain {
         
         transposed
     }
+
+    /// Save all network parameters (weights and biases) to a binary file.
+    /// Layout (all values as little-endian f32):
+    /// [input_hidden.weight] [input_hidden.bias] [hidden_output.weight] [hidden_output.bias]
+    pub fn save_to_file(&self, path: &str) -> io::Result<()> {
+        let mut file = BufWriter::new(File::create(path)?);
+
+        // Helper to write a slice of f32 as raw little-endian bytes
+        fn write_f32_slice<W: Write>(writer: &mut W, data: &[f32]) -> io::Result<()> {
+            for &v in data {
+                writer.write_all(&v.to_le_bytes())?;
+            }
+            Ok(())
+        }
+
+        // Extract all parameters as flat Vec<f32>
+        let ih_w = self
+            .input_hidden
+            .weight
+            .val()
+            .into_data()
+            .to_vec::<f32>()
+            .unwrap();
+        let ih_b = self
+            .input_hidden
+            .bias
+            .as_ref()
+            .expect("input_hidden bias missing")
+            .val()
+            .into_data()
+            .to_vec::<f32>()
+            .unwrap();
+        let ho_w = self
+            .hidden_output
+            .weight
+            .val()
+            .into_data()
+            .to_vec::<f32>()
+            .unwrap();
+        let ho_b = self
+            .hidden_output
+            .bias
+            .as_ref()
+            .expect("hidden_output bias missing")
+            .val()
+            .into_data()
+            .to_vec::<f32>()
+            .unwrap();
+
+        // Sanity check on expected sizes
+        debug_assert_eq!(ih_w.len(), INPUT_SIZE * HIDDEN_SIZE);
+        debug_assert_eq!(ih_b.len(), HIDDEN_SIZE);
+        debug_assert_eq!(ho_w.len(), HIDDEN_SIZE * OUTPUT_SIZE);
+        debug_assert_eq!(ho_b.len(), OUTPUT_SIZE);
+
+        write_f32_slice(&mut file, &ih_w)?;
+        write_f32_slice(&mut file, &ih_b)?;
+        write_f32_slice(&mut file, &ho_w)?;
+        write_f32_slice(&mut file, &ho_b)?;
+
+        file.flush()
+    }
+
+    /// Load a brain from a binary weights file previously written by `save_to_file`.
+    /// Validates that the number of weights matches the expected architecture.
+    pub fn from_file(path: &str) -> io::Result<Self> {
+        let device = get_device();
+
+        // Read entire file
+        let mut reader = BufReader::new(File::open(path)?);
+        let mut buffer = Vec::new();
+        reader.read_to_end(&mut buffer)?;
+
+        // Total expected number of f32 values
+        let expected_ih_w = INPUT_SIZE * HIDDEN_SIZE;
+        let expected_ih_b = HIDDEN_SIZE;
+        let expected_ho_w = HIDDEN_SIZE * OUTPUT_SIZE;
+        let expected_ho_b = OUTPUT_SIZE;
+        let expected_total = expected_ih_w + expected_ih_b + expected_ho_w + expected_ho_b;
+
+        if buffer.len() != expected_total * 4 {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                format!(
+                    "Weights file has incorrect size: got {} bytes, expected {} bytes",
+                    buffer.len(),
+                    expected_total * 4
+                ),
+            ));
+        }
+
+        // Helper to read f32 values from raw bytes
+        fn read_f32_slice(bytes: &[u8]) -> Vec<f32> {
+            let mut out = Vec::with_capacity(bytes.len() / 4);
+            for chunk in bytes.chunks_exact(4) {
+                out.push(f32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]));
+            }
+            out
+        }
+
+        // Split buffer into the four parameter groups
+        let mut offset_bytes = 0usize;
+        let take_bytes = |count_f32: usize, offset: &mut usize| -> &[u8] {
+            let byte_len = count_f32 * 4;
+            let start = *offset;
+            let end = start + byte_len;
+            *offset = end;
+            &buffer[start..end]
+        };
+
+        let ih_w_bytes = take_bytes(expected_ih_w, &mut offset_bytes);
+        let ih_b_bytes = take_bytes(expected_ih_b, &mut offset_bytes);
+        let ho_w_bytes = take_bytes(expected_ho_w, &mut offset_bytes);
+        let ho_b_bytes = take_bytes(expected_ho_b, &mut offset_bytes);
+
+        let ih_w = read_f32_slice(ih_w_bytes);
+        let ih_b = read_f32_slice(ih_b_bytes);
+        let ho_w = read_f32_slice(ho_w_bytes);
+        let ho_b = read_f32_slice(ho_b_bytes);
+
+        // Create a new brain so that we can query the expected tensor shapes
+        let mut brain = Brain::new(1.0, 1.0, 0.0, 0.0);
+
+        // Rebuild tensors with the same shapes as the randomly initialized ones
+        let ih_w_shape = brain.input_hidden.weight.val().shape();
+        let ih_b_shape = brain
+            .input_hidden
+            .bias
+            .as_ref()
+            .expect("input_hidden bias missing")
+            .val()
+            .shape();
+        let ho_w_shape = brain.hidden_output.weight.val().shape();
+        let ho_b_shape = brain
+            .hidden_output
+            .bias
+            .as_ref()
+            .expect("hidden_output bias missing")
+            .val()
+            .shape();
+
+        // Build tensors from flat data as 1D, then reshape to the original shapes.
+        // This avoids rank mismatches in Burn's `from_floats` API.
+        let ih_w_tensor = Tensor::<B, 1>::from_floats(ih_w.as_slice(), &device).reshape(ih_w_shape);
+        let ih_b_tensor = Tensor::<B, 1>::from_floats(ih_b.as_slice(), &device).reshape(ih_b_shape);
+        let ho_w_tensor = Tensor::<B, 1>::from_floats(ho_w.as_slice(), &device).reshape(ho_w_shape);
+        let ho_b_tensor = Tensor::<B, 1>::from_floats(ho_b.as_slice(), &device).reshape(ho_b_shape);
+
+        brain.input_hidden.weight = Param::from_tensor(ih_w_tensor);
+        brain.input_hidden.bias = Some(Param::from_tensor(ih_b_tensor));
+        brain.hidden_output.weight = Param::from_tensor(ho_w_tensor);
+        brain.hidden_output.bias = Some(Param::from_tensor(ho_b_tensor));
+
+        Ok(brain)
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::fs;
     
     #[test]
     fn test_brain_creation() {
@@ -284,5 +442,27 @@ mod tests {
         
         println!("Input-hidden sparsity: {:.2}%", ih_sparsity * 100.0);
         println!("Hidden-output sparsity: {:.2}%", ho_sparsity * 100.0);
+    }
+
+    #[test]
+    fn test_save_and_load_roundtrip() {
+        let brain = Brain::new_random_sparse();
+
+        let path = "test_brain_weights.bin";
+        brain.save_to_file(path).expect("failed to save brain weights");
+
+        let loaded = Brain::from_file(path).expect("failed to load brain weights");
+
+        // Clean up test file
+        let _ = fs::remove_file(path);
+
+        let sense = vec![0.1; INPUT_SIZE];
+        let out_original = brain.forward(&sense);
+        let out_loaded = loaded.forward(&sense);
+
+        assert_eq!(out_original.len(), out_loaded.len());
+        for (a, b) in out_original.iter().zip(out_loaded.iter()) {
+            assert!((a - b).abs() < 1e-5, "mismatch after load: {} vs {}", a, b);
+        }
     }
 }
