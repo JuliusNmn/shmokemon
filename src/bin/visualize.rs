@@ -32,18 +32,52 @@ const FRAMES_PER_STEP: usize = 2;
 async fn main() {
     request_new_screen_size(1400.0, 1000.0);
     
-    let step_limit = std::env::args()
-        .nth(1)
-        .and_then(|arg| arg.parse::<usize>().ok());
+    // CLI usage (backwards compatible):
+    //   cargo run --release --bin visualize [brain.bin] [step_limit]
+    //   - If the first arg ends with ".bin", attempt to load the brain from that file
+    //   - Otherwise, the first arg is interpreted as step_limit
+    let args: Vec<String> = std::env::args().skip(1).collect();
 
-    let mut init_params = BrainInitParams::default();
+    let (step_limit, mut init_params, mut brain) = if let Some(first) = args.get(0) {
+        if first.ends_with(".bin") {
+            let brain = match Brain::from_file(first) {
+                Ok(b) => b,
+                Err(e) => {
+                    eprintln!("Failed to load brain from '{}': {}. Falling back to random brain.", first, e);
+                    Brain::new(
+                        SPARSITY_INPUT_HIDDEN as f64,
+                        SPARSITY_HIDDEN_OUTPUT as f64,
+                        SPARSITY_INPUT_HIDDEN,
+                        SPARSITY_HIDDEN_OUTPUT,
+                    )
+                }
+            };
+
+            let step_limit = args.get(1).and_then(|arg| arg.parse::<usize>().ok());
+            (step_limit, BrainInitParams::default(), brain)
+        } else {
+            let step_limit = first.parse::<usize>().ok();
+            let mut init_params = BrainInitParams::default();
+            let brain = Brain::new(
+                init_params.ih_gain as f64,
+                init_params.ho_gain as f64,
+                init_params.ih_sparsity,
+                init_params.ho_sparsity,
+            );
+            (step_limit, init_params, brain)
+        }
+    } else {
+        let mut init_params = BrainInitParams::default();
+        let brain = Brain::new(
+            init_params.ih_gain as f64,
+            init_params.ho_gain as f64,
+            init_params.ih_sparsity,
+            init_params.ho_sparsity,
+        );
+        (None, init_params, brain)
+    };
+
     let mut world = GrabbableWorld::new();
-    let mut brain = Brain::new(
-        init_params.ih_gain as f64,
-        init_params.ho_gain as f64,
-        init_params.ih_sparsity,
-        init_params.ho_sparsity,
-    );
     let mut steps = 0usize;
     let mut frame = 0usize;
     loop {
