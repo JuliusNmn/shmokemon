@@ -6067,6 +6067,7 @@ dependencies = [
  "macroquad",
  "rand 0.8.5",
  "rapier2d",
+ "rayon",
 ]
 
 [[package]]
