@@ -6,7 +6,7 @@ default-run = "two_dbuddy"
 
 [dependencies]
 macroquad = "0.4"
-rapier2d = "0.22"
+rapier2d = {version = "0.22", features = ["simd-stable"]}
 rand = "0.8"
 burn = "0.19.1"
 burn-tch = "0.19.1"
