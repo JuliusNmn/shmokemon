@@ -117,6 +117,13 @@ async fn main() {
             steps = 0;
             frame = 0;
         }
+
+        if draw_mutate_button() {
+            brain = brain.mutated(0.05, 0.1);
+            world = GrabbableWorld::new();
+            steps = 0;
+            frame = 0;
+        }
         
         frame += 1;
 
@@ -718,6 +725,30 @@ fn draw_reset_button() -> bool {
     draw_rectangle_lines(button_x, button_y, button_width, button_height, 2.0, WHITE);
     draw_text("Reset Brain", button_x + 12.0, button_y + 23.0, 20.0, WHITE);
     
+    is_hovered && is_mouse_button_pressed(MouseButton::Left)
+}
+
+/// Draw mutate brain button and return true if clicked
+fn draw_mutate_button() -> bool {
+    let button_x = screen_width() - 150.0;
+    let button_y = screen_height() - 50.0;
+    let button_width = 130.0;
+    let button_height = 35.0;
+
+    let mouse_pos = mouse_position();
+    let is_hovered = mouse_pos.0 >= button_x && mouse_pos.0 <= button_x + button_width
+        && mouse_pos.1 >= button_y && mouse_pos.1 <= button_y + button_height;
+
+    let button_color = if is_hovered {
+        Color::from_rgba(80, 200, 120, 255)
+    } else {
+        Color::from_rgba(60, 160, 90, 255)
+    };
+
+    draw_rectangle(button_x, button_y, button_width, button_height, button_color);
+    draw_rectangle_lines(button_x, button_y, button_width, button_height, 2.0, WHITE);
+    draw_text("Mutate", button_x + 32.0, button_y + 23.0, 20.0, WHITE);
+
     is_hovered && is_mouse_button_pressed(MouseButton::Left)
 }
 
