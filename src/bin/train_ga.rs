@@ -1,29 +1,94 @@
 use std::env;
 use two_dbuddy::train_stand_upright;
 
-fn parse_arg_usize(args: &[String], index: usize, default: usize) -> usize {
-    args.get(index)
-        .and_then(|s| s.parse::<usize>().ok())
-        .unwrap_or(default)
-}
-
-fn parse_arg_string(args: &[String], index: usize, default: &str) -> String {
-    args.get(index).cloned().unwrap_or_else(|| default.to_string())
-}
-
 fn main() {
     let args: Vec<String> = env::args().collect();
 
-    // Args: [0]=bin, [1]=population, [2]=top_k, [3]=generations, [4]=output_path
-    let population = parse_arg_usize(&args, 1, 64);
-    let top_k = parse_arg_usize(&args, 2, 8);
-    let generations = parse_arg_usize(&args, 3, 50);
-    let output_path = parse_arg_string(&args, 4, "best_brain_stand_upright.bin");
+    // Defaults
+    let mut population: usize = 64;
+    let mut top_k: usize = 8;
+    let mut generations: usize = 50;
+    let mut output_path: String = "best_brain_stand_upright.bin".to_string();
+    let mut seed_brain_path: Option<String> = None;
+
+    // Simple flag parser: supports
+    // --population <usize>
+    // --top-k <usize>
+    // --generations <usize>
+    // --output <path>
+    // --seed <path>
+    let mut i = 1;
+    while i < args.len() {
+        match args[i].as_str() {
+            "--population" => {
+                if let Some(val) = args.get(i + 1) {
+                    if let Ok(parsed) = val.parse::<usize>() {
+                        population = parsed;
+                    }
+                    i += 2;
+                } else {
+                    break;
+                }
+            }
+            "--top-k" => {
+                if let Some(val) = args.get(i + 1) {
+                    if let Ok(parsed) = val.parse::<usize>() {
+                        top_k = parsed;
+                    }
+                    i += 2;
+                } else {
+                    break;
+                }
+            }
+            "--generations" => {
+                if let Some(val) = args.get(i + 1) {
+                    if let Ok(parsed) = val.parse::<usize>() {
+                        generations = parsed;
+                    }
+                    i += 2;
+                } else {
+                    break;
+                }
+            }
+            "--output" => {
+                if let Some(val) = args.get(i + 1) {
+                    output_path = val.clone();
+                    i += 2;
+                } else {
+                    break;
+                }
+            }
+            "--seed" => {
+                if let Some(val) = args.get(i + 1) {
+                    seed_brain_path = Some(val.clone());
+                    i += 2;
+                } else {
+                    break;
+                }
+            }
+            _ => {
+                // Unknown argument, skip it
+                i += 1;
+            }
+        }
+    }
+
+    // Args: [0]=bin, [1]=population, [2]=top_k, [3]=generations, [4]=output_path, [5]=optional seed_brain_path
 
     println!(
-        "Running GA training: population={}, top_k={}, generations={}, output_path={}",
-        population, top_k, generations, output_path
+        "Running GA training: population={}, top_k={}, generations={}, output_path={}, seed_brain_path={}",
+        population,
+        top_k,
+        generations,
+        output_path,
+        seed_brain_path.as_deref().unwrap_or("<none>")
     );
 
-    train_stand_upright(population, top_k, generations, &output_path);
+    train_stand_upright(
+        population,
+        top_k,
+        generations,
+        &output_path,
+        seed_brain_path.as_deref(),
+    );
 }
