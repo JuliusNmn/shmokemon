@@ -1,13 +1,11 @@
 use burn::nn::{Linear, LinearConfig, Initializer};
 use burn::tensor::Tensor;
 use burn::module::Param;
-use burn_ndarray::{NdArray, NdArrayDevice};
 use rand::Rng;
 use std::fs::File;
 use std::io::{self, Read, Write, BufReader, BufWriter};
-
-#[cfg(feature = "mps")]
 use burn_tch::{LibTorch, LibTorchDevice};
+use std::env;
 
 // Network architecture constants
 pub const INPUT_SIZE: usize = 68;  // From BuddyIO::sense_size()
@@ -20,22 +18,19 @@ pub const SPARSITY_INPUT_HIDDEN: f32 = 0.9;
 pub const SPARSITY_HIDDEN_OUTPUT: f32 = 0.9;
 
 /// Type alias for the backend we're using
-/// Uses MPS (Metal) if available, otherwise falls back to CPU (NdArray)
-#[cfg(feature = "mps")]
+/// Uses the LibTorch backend on either CPU or MPS (Metal) selected at runtime.
 type B = LibTorch;
 
-#[cfg(not(feature = "mps"))]
-type B = NdArray;
-
 /// Helper to get the appropriate device
-#[cfg(feature = "mps")]
 fn get_device() -> LibTorchDevice {
-    LibTorchDevice::Mps
-}
-
-#[cfg(not(feature = "mps"))]
-fn get_device() -> NdArrayDevice {
-    NdArrayDevice::Cpu
+    // Runtime selection:
+    // - Default: CPU
+    // - If TWO_DBUDDY_USE_MPS is set to any value, use the MPS device.
+    if env::var("TWO_DBUDDY_USE_MPS").is_ok() {
+        LibTorchDevice::Mps
+    } else {
+        LibTorchDevice::Cpu
+    }
 }
 
 /// Brain for the buddy using a simple feedforward neural network

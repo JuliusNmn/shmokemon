@@ -3,6 +3,7 @@ use two_dbuddy::{
     BuddyPartShape, GrabbableWorld, FLOOR_HALF_EXTENTS, FLOOR_HEIGHT, PIXELS_PER_METER,
     BuddyIO, BuddyAction, Brain, SPARSITY_INPUT_HIDDEN, SPARSITY_HIDDEN_OUTPUT,
 };
+use std::env;
 
 /// Slider state for brain initialization parameters
 struct BrainInitParams {
@@ -33,10 +34,26 @@ async fn main() {
     request_new_screen_size(1400.0, 1000.0);
     
     // CLI usage (backwards compatible):
-    //   cargo run --release --bin visualize [brain.bin] [step_limit]
-    //   - If the first arg ends with ".bin", attempt to load the brain from that file
-    //   - Otherwise, the first arg is interpreted as step_limit
-    let args: Vec<String> = std::env::args().skip(1).collect();
+    //   cargo run --release --bin visualize [--mps] [brain.bin] [step_limit]
+    //   - If the first non-flag arg ends with ".bin", attempt to load the brain from that file
+    //   - Otherwise, the first non-flag arg is interpreted as step_limit
+    let raw_args: Vec<String> = env::args().skip(1).collect();
+    let mut args: Vec<String> = Vec::new();
+    let mut use_mps = false;
+
+    for arg in raw_args {
+        if arg == "--mps" {
+            use_mps = true;
+        } else {
+            args.push(arg);
+        }
+    }
+
+    if use_mps {
+        // This is picked up in brain.rs to select the MPS LibTorch device
+        // instead of the default CPU device.
+        env::set_var("TWO_DBUDDY_USE_MPS", "1");
+    }
 
     let (step_limit, mut init_params, mut brain) = if let Some(first) = args.get(0) {
         if first.ends_with(".bin") {
