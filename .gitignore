@@ -1,1 +1,5 @@
 /target
+
+# Serialized data / artifacts
+state_store/
+*.bin

@@ -10,6 +10,7 @@ fn main() {
     let mut generations: usize = 50;
     let mut output_path: String = "best_brain_stand_upright.bin".to_string();
     let mut seed_brain_path: Option<String> = None;
+    let mut state_dir: Option<String> = None;
     let mut use_mps: bool = false;
 
     // Simple flag parser: supports
@@ -18,6 +19,7 @@ fn main() {
     // --generations <usize>
     // --output <path>
     // --seed <path>
+    // --state-dir <path>
     // --mps
     let mut i = 1;
     while i < args.len() {
@@ -68,6 +70,14 @@ fn main() {
                     break;
                 }
             }
+            "--state-dir" => {
+                if let Some(val) = args.get(i + 1) {
+                    state_dir = Some(val.clone());
+                    i += 2;
+                } else {
+                    break;
+                }
+            }
             "--mps" => {
                 use_mps = true;
                 i += 1;
@@ -82,12 +92,13 @@ fn main() {
     // Args: [0]=bin, [1]=population, [2]=top_k, [3]=generations, [4]=output_path, [5]=optional seed_brain_path
 
     println!(
-        "Running GA training: population={}, top_k={}, generations={}, output_path={}, seed_brain_path={}, use_mps={}",
+        "Running GA training: population={}, top_k={}, generations={}, output_path={}, seed_brain_path={}, state_dir={}, use_mps={}",
         population,
         top_k,
         generations,
         output_path,
         seed_brain_path.as_deref().unwrap_or("<none>"),
+        state_dir.as_deref().unwrap_or("state_store"),
         use_mps,
     );
 
@@ -103,5 +114,6 @@ fn main() {
         generations,
         &output_path,
         seed_brain_path.as_deref(),
+        state_dir.as_deref(),
     );
 }

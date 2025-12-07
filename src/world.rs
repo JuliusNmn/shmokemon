@@ -237,16 +237,24 @@ impl PhysicsStateStore {
     pub fn dump_state(&self, world: &SimulationWorld) -> Result<PathBuf, Box<dyn std::error::Error>> {
         fs::create_dir_all(&self.dir)?;
         let mut rng = rand::thread_rng();
-        let filename = format!("state_{:016x}.bin", rng.gen::<u64>());
-        let path = self.dir.join(filename);
+        let dirname = format!("state_{:016x}", rng.gen::<u64>());
+        let snapshot_dir = self.dir.join(dirname);
+        fs::create_dir_all(&snapshot_dir)?;
 
+        let snapshot_file = snapshot_dir.join("state.bin");
         let config = bincode::config::standard();
         let data = bincode::serde::encode_to_vec(world, config)?;
-        fs::write(&path, data)?;
-        Ok(path)
+        fs::write(&snapshot_file, data)?;
+
+        // Return the directory so callers can add extra artifacts (e.g. images).
+        Ok(snapshot_dir)
     }
 
-    /// Deserialize all simulation worlds stored as files in the directory.
+    /// Deserialize all simulation worlds stored in the directory.
+    ///
+    /// Supports two layouts:
+    /// - Flat files directly under `dir` (legacy)
+    /// - Per-snapshot subdirectories containing `state.bin` (new)
     pub fn load_all_states(&self) -> Result<Vec<SimulationWorld>, Box<dyn std::error::Error>> {
         let mut worlds = Vec::new();
 
@@ -257,14 +265,25 @@ impl PhysicsStateStore {
         let config = bincode::config::standard();
         for entry in fs::read_dir(&self.dir)? {
             let entry = entry?;
-            if !entry.file_type()?.is_file() {
-                continue;
-            }
+            let path = entry.path();
+            let file_type = entry.file_type()?;
 
-            let bytes = fs::read(entry.path())?;
-            let (world, _): (SimulationWorld, _) =
-                bincode::serde::decode_from_slice(&bytes, config)?;
-            worlds.push(world);
+            if file_type.is_file() {
+                // Legacy: directly stored SimulationWorld file.
+                let bytes = fs::read(&path)?;
+                let (world, _): (SimulationWorld, _) =
+                    bincode::serde::decode_from_slice(&bytes, config)?;
+                worlds.push(world);
+            } else if file_type.is_dir() {
+                // New layout: look for state.bin inside the directory.
+                let candidate = path.join("state.bin");
+                if candidate.exists() {
+                    let bytes = fs::read(candidate)?;
+                    let (world, _): (SimulationWorld, _) =
+                        bincode::serde::decode_from_slice(&bytes, config)?;
+                    worlds.push(world);
+                }
+            }
         }
 
         Ok(worlds)
