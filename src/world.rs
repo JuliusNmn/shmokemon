@@ -4,6 +4,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use serde::{Serialize, Deserialize};
 use rand::Rng;
+use std::error::Error;
 use crate::buddy::Buddy;
 use crate::physics::{
     BUDDY_SPAWN_HEIGHT, FIXED_TIME_STEP, FLOOR_HALF_EXTENTS, FLOOR_HEIGHT, 
@@ -124,6 +125,14 @@ impl SimulationWorld {
         
     }
 
+    pub fn from_file<P: AsRef<Path>>(path: P) -> Result<Self, Box<dyn Error>> {
+        let bytes = fs::read(path)?;
+        let config = bincode::config::standard();
+        let (world, _): (SimulationWorld, _) =
+            bincode::serde::decode_from_slice(&bytes, config)?;
+        Ok(world)
+    }
+
     pub fn set_gravity(&mut self, gravity: Vector<Real>) {
         self.gravity = gravity;
     }
@@ -155,6 +164,16 @@ impl SimulationWorld {
     
     pub fn time(&self) -> Real {
         self.time
+    }
+
+    pub fn reset_velocities_and_torque(&mut self) {
+        for (_handle, body) in self.rigid_body_set.iter_mut() {
+            body.set_linvel(vector![0.0, 0.0], true);
+            body.set_angvel(0.0, true);
+            body.reset_forces(true);
+            body.reset_torques(true);
+        }
+        self.torque_history.clear();
     }
 
     pub fn body_snapshot(&self, handle: RigidBodyHandle) -> Option<RigidBodySnapshot> {

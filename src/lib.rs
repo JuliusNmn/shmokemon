@@ -20,7 +20,7 @@ pub use buddy::{
     UPPER_LEG_LENGTH,
     LOWER_LEG_LENGTH,
 };
-pub use world::SimulationWorld;
+pub use world::{SimulationWorld, PhysicsStateStore};
 pub use grabbable_world::{GrabbableWorld, BodyVisualShape};
 pub use rl_interface::{
     BuddyIO, BuddySense, BuddyAction, LimbSense, JointSense, 
