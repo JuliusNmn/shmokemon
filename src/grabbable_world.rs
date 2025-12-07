@@ -202,6 +202,22 @@ impl GrabbableWorld {
         self.world.torque_history()
     }
 
+    pub fn set_gravity(&mut self, gravity: Vector<Real>) {
+        self.world.set_gravity(gravity);
+    }
+
+    pub fn set_buddy_gravity_scale(&mut self, scale: Real) {
+        self.world.set_buddy_gravity_scale(scale);
+    }
+
+    pub fn set_zero_gravity(&mut self) {
+        self.world.set_gravity(vector![0.0, 0.0]);
+    }
+
+    pub fn set_default_gravity(&mut self) {
+        self.world.set_gravity(vector![0.0, -9.81]);
+    }
+
     /// Query an approximate visual shape (circle/box) for the given body handle,
     /// based on the collider shape attached to that body.
     pub fn body_visual_shape(&self, handle: RigidBodyHandle) -> Option<BodyVisualShape> {
