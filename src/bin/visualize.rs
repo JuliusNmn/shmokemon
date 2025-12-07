@@ -152,20 +152,20 @@ async fn main() {
         let sense_flat = BuddyIO::flatten_sense(&sense);
         let (action_flat, hidden_activations) = brain.forward_with_activations(&sense_flat);
         let action = BuddyIO::unflatten_action(&action_flat);
-        
-        // Check for button clicks
-        if draw_world(&world, steps, step_limit, &sense_flat, &action, &brain, &hidden_activations) {
-            // Restart button clicked - reset simulation with same brain
+
+        draw_world(&world, steps, step_limit, &sense_flat, &action, &brain, &hidden_activations);
+
+        draw_init_param_sliders(&mut init_params);
+
+        let ui_actions = handle_ui_actions();
+
+        if ui_actions.restart_simulation {
             world = GrabbableWorld::new();
             steps = 0;
             frame = 0;
         }
-        
-        // Draw sliders above reset buttons
-        draw_init_param_sliders(&mut init_params);
-        
-        if draw_reset_button() {
-            // Reset brain button clicked - new brain with current slider values
+
+        if ui_actions.reset_brain {
             brain = Brain::new(
                 init_params.ih_gain as f64,
                 init_params.ho_gain as f64,
@@ -177,13 +177,13 @@ async fn main() {
             frame = 0;
         }
 
-        if draw_mutate_button() {
+        if ui_actions.mutate_brain {
             brain = brain.mutated(0.05, 0.1);
             world = GrabbableWorld::new();
             steps = 0;
             frame = 0;
         }
-        
+
         frame += 1;
 
         next_frame().await;
@@ -198,7 +198,7 @@ fn draw_world(
     action: &BuddyAction,
     brain: &Brain,
     hidden_activations: &[f32],
-) -> bool {
+) {
     clear_background(Color::from_rgba(12, 16, 24, 255));
     draw_floor();
     draw_buddy(world);
@@ -222,17 +222,20 @@ fn draw_world(
     
     // Draw torque history plot in bottom left corner
     draw_torque_history(world);
-    
+
+    // Controls legend (bottom middle)
+    let controls_y = screen_height() - 30.0;
+    let controls_x = screen_width() * 0.5 - 220.0;
+    draw_text("Controls: R - Restart  |  B - Reset (use sliders)  |  M - Mutate", controls_x, controls_y, 16.0, GRAY);
+
+    // Exit hint bottom-left
     draw_text(
         "press Ctrl+C to exit",
         20.0,
-        screen_height() - 20.0,
-        20.0,
+        screen_height() - 10.0,
+        16.0,
         GRAY,
     );
-    
-    // Draw restart button and return if clicked
-    draw_restart_button()
 }
 
 fn draw_floor() {
@@ -762,76 +765,18 @@ fn draw_init_param_sliders(params: &mut BrainInitParams) {
     }
 }
 
-/// Draw restart button and return true if clicked
-fn draw_restart_button() -> bool {
-    let button_x = screen_width() - 280.0;
-    let button_y = screen_height() - 100.0;
-    let button_width = 120.0;
-    let button_height = 35.0;
-    
-    let mouse_pos = mouse_position();
-    let is_hovered = mouse_pos.0 >= button_x && mouse_pos.0 <= button_x + button_width
-        && mouse_pos.1 >= button_y && mouse_pos.1 <= button_y + button_height;
-    
-    let button_color = if is_hovered {
-        Color::from_rgba(80, 120, 200, 255)
-    } else {
-        Color::from_rgba(60, 100, 180, 255)
-    };
-    
-    draw_rectangle(button_x, button_y, button_width, button_height, button_color);
-    draw_rectangle_lines(button_x, button_y, button_width, button_height, 2.0, WHITE);
-    draw_text("Restart", button_x + 28.0, button_y + 23.0, 20.0, WHITE);
-    
-    is_hovered && is_mouse_button_pressed(MouseButton::Left)
+struct UiActions {
+    restart_simulation: bool,
+    reset_brain: bool,
+    mutate_brain: bool,
 }
 
-/// Draw reset brain button and return true if clicked
-fn draw_reset_button() -> bool {
-    let button_x = screen_width() - 150.0;
-    let button_y = screen_height() - 100.0;
-    let button_width = 130.0;
-    let button_height = 35.0;
-    
-    let mouse_pos = mouse_position();
-    let is_hovered = mouse_pos.0 >= button_x && mouse_pos.0 <= button_x + button_width
-        && mouse_pos.1 >= button_y && mouse_pos.1 <= button_y + button_height;
-    
-    let button_color = if is_hovered {
-        Color::from_rgba(200, 80, 80, 255)
-    } else {
-        Color::from_rgba(180, 60, 60, 255)
-    };
-    
-    draw_rectangle(button_x, button_y, button_width, button_height, button_color);
-    draw_rectangle_lines(button_x, button_y, button_width, button_height, 2.0, WHITE);
-    draw_text("Reset Brain", button_x + 12.0, button_y + 23.0, 20.0, WHITE);
-    
-    is_hovered && is_mouse_button_pressed(MouseButton::Left)
-}
-
-/// Draw mutate brain button and return true if clicked
-fn draw_mutate_button() -> bool {
-    let button_x = screen_width() - 150.0;
-    let button_y = screen_height() - 50.0;
-    let button_width = 130.0;
-    let button_height = 35.0;
-
-    let mouse_pos = mouse_position();
-    let is_hovered = mouse_pos.0 >= button_x && mouse_pos.0 <= button_x + button_width
-        && mouse_pos.1 >= button_y && mouse_pos.1 <= button_y + button_height;
-
-    let button_color = if is_hovered {
-        Color::from_rgba(80, 200, 120, 255)
-    } else {
-        Color::from_rgba(60, 160, 90, 255)
-    };
-
-    draw_rectangle(button_x, button_y, button_width, button_height, button_color);
-    draw_rectangle_lines(button_x, button_y, button_width, button_height, 2.0, WHITE);
-    draw_text("Mutate", button_x + 32.0, button_y + 23.0, 20.0, WHITE);
-
-    is_hovered && is_mouse_button_pressed(MouseButton::Left)
+fn handle_ui_actions() -> UiActions {
+    UiActions {
+        restart_simulation: is_key_pressed(KeyCode::R),
+        reset_brain: is_key_pressed(KeyCode::B),
+        mutate_brain: is_key_pressed(KeyCode::M),
+    }
 }
 
 /// Draw torque history plot in bottom left corner
