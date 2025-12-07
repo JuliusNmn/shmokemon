@@ -1,5 +1,6 @@
 use rapier2d::{geometry::DefaultBroadPhase, prelude::*};
 use std::collections::VecDeque;
+use serde::{Serialize, Deserialize};
 use crate::buddy::Buddy;
 use crate::physics::{
     BUDDY_SPAWN_HEIGHT, FIXED_TIME_STEP, FLOOR_HALF_EXTENTS, FLOOR_HEIGHT, 
@@ -7,7 +8,9 @@ use crate::physics::{
 };
 use crate::rl_interface::{BuddyIO, BuddySense, BuddyAction};
 
+#[derive(Serialize, Deserialize)]
 pub struct SimulationWorld {
+    #[serde(skip, default = "PhysicsPipeline::new")]
     pipeline: PhysicsPipeline,
     gravity: Vector<Real>,
     integration_parameters: IntegrationParameters,
@@ -18,6 +21,7 @@ pub struct SimulationWorld {
     pub(crate) collider_set: ColliderSet,
     pub(crate) impulse_joint_set: ImpulseJointSet,
     pub(crate) multibody_joint_set: MultibodyJointSet,
+    #[serde(skip, default = "CCDSolver::new")]
     ccd_solver: CCDSolver,
     pub(crate) buddy: Buddy,
     time: Real,
@@ -168,5 +172,31 @@ impl SimulationWorld {
     /// Get the torque history buffer (last 1000 torque values)
     pub fn torque_history(&self) -> &VecDeque<Real> {
         &self.torque_history
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::SimulationWorld;
+    use bincode::serde::{encode_to_vec, decode_from_slice};
+
+    #[test]
+    fn simulation_world_roundtrip_serialization() {
+        let mut world = SimulationWorld::new();
+        for _ in 0..5 {
+            world.step();
+        }
+
+        let config = bincode::config::standard();
+        let serialized = encode_to_vec(&world, config).expect("serialization should succeed");
+
+        let (deserialized, _): (SimulationWorld, _) =
+            decode_from_slice(&serialized, config).expect("deserialization should succeed");
+
+        assert_eq!(world.buddy_sense_flat().len(), deserialized.buddy_sense_flat().len());
+        assert_eq!(world.time(), deserialized.time());
+
+        let mut continued = deserialized;
+        continued.step();
     }
 }

@@ -1,4 +1,5 @@
 use rapier2d::prelude::*;
+use serde::{Serialize, Deserialize};
 
 // Simulation constants
 pub const FIXED_TIME_STEP: Real = 1.0 / 60.0;
@@ -15,7 +16,7 @@ pub const FLOOR_HEIGHT: Real = -1.5;
 // Buddy spawn
 pub const BUDDY_SPAWN_HEIGHT: Real = 0.2;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RigidBodySnapshot {
     pub position: [f32; 2],
     pub velocity: [f32; 2],

@@ -1,5 +1,6 @@
 use rapier2d::prelude::*;
 use crate::physics::{GROUP_BUDDY, GROUP_WORLD};
+use serde::{Serialize, Deserialize};
 
 // Buddy dimensions
 pub const HEAD_RADIUS: Real = 0.22;
@@ -23,7 +24,7 @@ pub const JOINT_STIFFNESS: Real = 20.0;
 pub const JOINT_DAMPING: Real = 2.0;
 pub const JOINT_MAX_FORCE: Real = 50.0;
 
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct Buddy {
     // Limb handles
     pub torso: RigidBodyHandle,

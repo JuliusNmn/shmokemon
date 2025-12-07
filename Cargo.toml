@@ -6,12 +6,14 @@ default-run = "two_dbuddy"
 
 [dependencies]
 macroquad = "0.4"
-rapier2d = {version = "0.30.1", features = ["simd-stable"]}
+rapier2d = {version = "0.30.1", features = ["simd-stable", "serde-serialize"]}
 rand = "0.8"
 burn = "0.19.1"
 burn-tch = "0.19.1"
 burn-ndarray = "0.19.1"
 rayon = "1.10"
+serde = { version = "1", features = ["derive"] }
+bincode = { version = "2.0.0-rc.3", features = ["serde"] }
 
 [features]
 default = []
