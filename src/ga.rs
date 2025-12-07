@@ -1,5 +1,9 @@
 use rand::Rng;
 use rayon::prelude::*;
+use std::fs;
+use std::fs::File;
+use std::io::Write;
+use std::path::PathBuf;
 use std::time::Instant;
 use crate::{Brain, SimulationWorld};
 
@@ -15,8 +19,49 @@ const INITIAL_HO_GAIN: f64 = 1.0;
 const INITIAL_IH_SPARSITY: f32 = 0.95;
 const INITIAL_HO_SPARSITY: f32 = 0.95;
 
-fn evaluate_brain_upright(brain: &Brain) -> f32 {
-    let mut world = SimulationWorld::new();
+const DEFAULT_STATE_DIR: &str = "state_store";
+
+fn load_snapshot_paths_from_dir(dir: &str) -> Vec<PathBuf> {
+    let mut paths = Vec::new();
+    let dir_path = PathBuf::from(dir);
+
+    if !dir_path.exists() {
+        return paths;
+    }
+
+    if let Ok(entries) = fs::read_dir(&dir_path) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if let Ok(file_type) = entry.file_type() {
+                if file_type.is_file() {
+                    // Legacy flat layout: treat any file as a snapshot.
+                    paths.push(path);
+                } else if file_type.is_dir() {
+                    // New layout: look for state.bin inside the directory.
+                    let candidate = path.join("state.bin");
+                    if candidate.exists() {
+                        paths.push(candidate);
+                    }
+                }
+            }
+        }
+    }
+
+    paths
+}
+
+fn evaluate_brain_upright(brain: &Brain, snapshot_paths: &[PathBuf]) -> (f32, Option<usize>) {
+    let mut rng = rand::thread_rng();
+
+    let (mut world, snapshot_index) = if snapshot_paths.is_empty() {
+        (SimulationWorld::new(), None)
+    } else {
+        let idx = rng.gen_range(0..snapshot_paths.len());
+        let path = &snapshot_paths[idx];
+        let world = SimulationWorld::from_file(path).unwrap_or_else(|_| SimulationWorld::new());
+        (world, Some(idx))
+    };
+
     let mut total_score = 0.0f32;
 
     for _ in 0..FRAMES_PER_ROLLOUT {
@@ -49,7 +94,7 @@ fn evaluate_brain_upright(brain: &Brain) -> f32 {
         }
     }
 
-    total_score
+    (total_score, snapshot_index)
 }
 
 pub fn train_stand_upright(
@@ -58,6 +103,7 @@ pub fn train_stand_upright(
     generations: usize,
     output_path: &str,
     seed_brain_path: Option<&str>,
+    snapshot_dir: Option<&str>,
 ) {
     assert!(population_size > 0);
     assert!(top_k > 0 && top_k <= population_size);
@@ -88,23 +134,27 @@ pub fn train_stand_upright(
             .collect()
     };
 
+    // Load snapshot pool (if any) from the configured state directory (or default).
+    let snapshot_root = snapshot_dir.unwrap_or(DEFAULT_STATE_DIR);
+    let snapshot_paths = load_snapshot_paths_from_dir(snapshot_root);
+
     let mut best_overall_score = f32::NEG_INFINITY;
     let mut cumulative_steps: usize = 0;
 
     for gen in 0..generations {
         let gen_start = Instant::now();
 
-        let mut scored: Vec<(f32, Brain)> = population
+        let mut scored: Vec<(f32, Brain, Option<usize>)> = population
             .into_par_iter()
             .map(|brain| {
-                let score = evaluate_brain_upright(&brain);
-                (score, brain)
+                let (score, snapshot_idx) = evaluate_brain_upright(&brain, &snapshot_paths);
+                (score, brain, snapshot_idx)
             })
             .collect();
 
         scored.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal));
 
-        let best_score = scored.first().map(|(s, _)| *s).unwrap_or(f32::NEG_INFINITY);
+        let best_score = scored.first().map(|(s, _, _)| *s).unwrap_or(f32::NEG_INFINITY);
 
         // Simulation statistics for this generation
         let steps_this_gen: usize = population_size * FRAMES_PER_ROLLOUT;
@@ -119,15 +169,30 @@ pub fn train_stand_upright(
 
         if best_score > best_overall_score {
             best_overall_score = best_score;
-            if let Some((_, best_brain)) = scored.first() {
+            if let Some((_, best_brain, snapshot_opt)) = scored.first() {
                 let _ = best_brain.save_to_file(output_path);
+
+                if let Some(idx) = *snapshot_opt {
+                    if let Some(path) = snapshot_paths.get(idx) {
+                        let meta_path = format!("{}.snapshots.txt", output_path);
+                        if let Ok(mut file) = File::create(&meta_path) {
+                            let _ = writeln!(
+                                file,
+                                "best_score\t{}\nsnapshot_index\t{}\nsnapshot_path\t{}",
+                                best_score,
+                                idx,
+                                path.display()
+                            );
+                        }
+                    }
+                }
             }
         }
 
         let survivors: Vec<Brain> = scored
             .into_iter()
             .take(top_k)
-            .map(|(_, brain)| brain)
+            .map(|(_, brain, _)| brain)
             .collect();
 
         let survivor_count = survivors.len();
