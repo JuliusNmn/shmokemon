@@ -1,6 +1,9 @@
 use rapier2d::{geometry::DefaultBroadPhase, prelude::*};
 use std::collections::VecDeque;
+use std::fs;
+use std::path::{Path, PathBuf};
 use serde::{Serialize, Deserialize};
+use rand::Rng;
 use crate::buddy::Buddy;
 use crate::physics::{
     BUDDY_SPAWN_HEIGHT, FIXED_TIME_STEP, FLOOR_HALF_EXTENTS, FLOOR_HEIGHT, 
@@ -193,17 +196,68 @@ impl SimulationWorld {
         let action = BuddyIO::unflatten_action(flat_action);
         self.apply_buddy_action(&action);
     }
-    
+
     /// Get the torque history buffer (last 1000 torque values)
     pub fn torque_history(&self) -> &VecDeque<Real> {
         &self.torque_history
     }
 }
 
+pub struct PhysicsStateStore {
+    dir: PathBuf,
+}
+
+impl PhysicsStateStore {
+    pub fn new<P: AsRef<Path>>(dir: P) -> Self {
+        Self {
+            dir: dir.as_ref().to_path_buf(),
+        }
+    }
+
+    /// Dump the given simulation world into the store directory using a random filename.
+    pub fn dump_state(&self, world: &SimulationWorld) -> Result<PathBuf, Box<dyn std::error::Error>> {
+        fs::create_dir_all(&self.dir)?;
+        let mut rng = rand::thread_rng();
+        let filename = format!("state_{:016x}.bin", rng.gen::<u64>());
+        let path = self.dir.join(filename);
+
+        let config = bincode::config::standard();
+        let data = bincode::serde::encode_to_vec(world, config)?;
+        fs::write(&path, data)?;
+        Ok(path)
+    }
+
+    /// Deserialize all simulation worlds stored as files in the directory.
+    pub fn load_all_states(&self) -> Result<Vec<SimulationWorld>, Box<dyn std::error::Error>> {
+        let mut worlds = Vec::new();
+
+        if !self.dir.exists() {
+            return Ok(worlds);
+        }
+
+        let config = bincode::config::standard();
+        for entry in fs::read_dir(&self.dir)? {
+            let entry = entry?;
+            if !entry.file_type()?.is_file() {
+                continue;
+            }
+
+            let bytes = fs::read(entry.path())?;
+            let (world, _): (SimulationWorld, _) =
+                bincode::serde::decode_from_slice(&bytes, config)?;
+            worlds.push(world);
+        }
+
+        Ok(worlds)
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use super::SimulationWorld;
+    use super::{SimulationWorld, PhysicsStateStore};
     use bincode::serde::{encode_to_vec, decode_from_slice};
+    use std::env;
+    use std::fs;
 
     #[test]
     fn simulation_world_roundtrip_serialization() {
@@ -223,5 +277,36 @@ mod tests {
 
         let mut continued = deserialized;
         continued.step();
+    }
+
+    #[test]
+    fn simulation_world_save_and_load_file() {
+        let mut world = SimulationWorld::new();
+        for _ in 0..3 {
+            world.step();
+        }
+
+        let tmp_dir = env::temp_dir().join("simulation_world_store_test");
+        let _ = fs::remove_dir_all(&tmp_dir);
+
+        let store = PhysicsStateStore::new(&tmp_dir);
+        let path = store
+            .dump_state(&world)
+            .expect("dumping simulation world to store should succeed");
+        assert!(path.exists());
+
+        let loaded_worlds = store
+            .load_all_states()
+            .expect("loading all simulation worlds from store should succeed");
+
+        assert_eq!(loaded_worlds.len(), 1);
+        let mut loaded = loaded_worlds.into_iter().next().unwrap();
+
+        assert_eq!(world.buddy_sense_flat().len(), loaded.buddy_sense_flat().len());
+        assert_eq!(world.time(), loaded.time());
+
+        loaded.step();
+
+        let _ = fs::remove_dir_all(&tmp_dir);
     }
 }
