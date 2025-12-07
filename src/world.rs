@@ -121,6 +121,31 @@ impl SimulationWorld {
         
     }
 
+    pub fn set_gravity(&mut self, gravity: Vector<Real>) {
+        self.gravity = gravity;
+    }
+
+    pub fn set_buddy_gravity_scale(&mut self, scale: Real) {
+        let handles = [
+            self.buddy.torso,
+            self.buddy.head,
+            self.buddy.front_arm_upper,
+            self.buddy.front_arm_lower,
+            self.buddy.back_arm_upper,
+            self.buddy.back_arm_lower,
+            self.buddy.front_leg_upper,
+            self.buddy.front_leg_lower,
+            self.buddy.back_leg_upper,
+            self.buddy.back_leg_lower,
+        ];
+
+        for handle in handles {
+            if let Some(body) = self.rigid_body_set.get_mut(handle) {
+                body.set_gravity_scale(scale, true);
+            }
+        }
+    }
+
     pub fn buddy(&self) -> &Buddy {
         &self.buddy
     }

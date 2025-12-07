@@ -105,6 +105,8 @@ async fn main() {
     let mut world = GrabbableWorld::new();
     let mut steps = 0usize;
     let mut frame = 0usize;
+    let mut gravity_enabled = true;
+    let mut actions_enabled = true;
     loop {
         if let Some(limit) = step_limit {
             if steps >= limit {
@@ -134,7 +136,12 @@ async fn main() {
             // Get sense data and use brain to generate action
             let sense = world.buddy_sense();
             let sense_flat = BuddyIO::flatten_sense(&sense);
-            let action_flat = brain.forward(&sense_flat);
+            let mut action_flat = brain.forward(&sense_flat);
+            if !actions_enabled {
+                for v in &mut action_flat {
+                    *v = 0.0;
+                }
+            }
             let action = BuddyIO::unflatten_action(&action_flat);
             world.apply_buddy_action(&action);
             
@@ -150,7 +157,12 @@ async fn main() {
         // Get current sense and action for visualization
         let sense = world.buddy_sense();
         let sense_flat = BuddyIO::flatten_sense(&sense);
-        let (action_flat, hidden_activations) = brain.forward_with_activations(&sense_flat);
+        let (mut action_flat, hidden_activations) = brain.forward_with_activations(&sense_flat);
+        if !actions_enabled {
+            for v in &mut action_flat {
+                *v = 0.0;
+            }
+        }
         let action = BuddyIO::unflatten_action(&action_flat);
 
         draw_world(&world, steps, step_limit, &sense_flat, &action, &brain, &hidden_activations);
@@ -182,6 +194,19 @@ async fn main() {
             world = GrabbableWorld::new();
             steps = 0;
             frame = 0;
+        }
+
+        if ui_actions.toggle_gravity {
+            gravity_enabled = !gravity_enabled;
+            if gravity_enabled {
+                world.set_default_gravity();
+            } else {
+                world.set_zero_gravity();
+            }
+        }
+
+        if ui_actions.toggle_actions {
+            actions_enabled = !actions_enabled;
         }
 
         frame += 1;
@@ -225,8 +250,14 @@ fn draw_world(
 
     // Controls legend (bottom middle)
     let controls_y = screen_height() - 30.0;
-    let controls_x = screen_width() * 0.5 - 220.0;
-    draw_text("Controls: R - Restart  |  B - Reset (use sliders)  |  M - Mutate", controls_x, controls_y, 16.0, GRAY);
+    let controls_x = screen_width() * 0.5 - 360.0;
+    draw_text(
+        "Controls: R - Restart  |  B - Reset (use sliders)  |  M - Mutate  |  G - Toggle gravity  |  W - Toggle actions",
+        controls_x,
+        controls_y,
+        16.0,
+        GRAY,
+    );
 
     // Exit hint bottom-left
     draw_text(
@@ -769,6 +800,8 @@ struct UiActions {
     restart_simulation: bool,
     reset_brain: bool,
     mutate_brain: bool,
+    toggle_gravity: bool,
+    toggle_actions: bool,
 }
 
 fn handle_ui_actions() -> UiActions {
@@ -776,6 +809,8 @@ fn handle_ui_actions() -> UiActions {
         restart_simulation: is_key_pressed(KeyCode::R),
         reset_brain: is_key_pressed(KeyCode::B),
         mutate_brain: is_key_pressed(KeyCode::M),
+        toggle_gravity: is_key_pressed(KeyCode::G),
+        toggle_actions: is_key_pressed(KeyCode::W),
     }
 }
 
