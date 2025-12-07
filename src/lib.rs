@@ -8,9 +8,20 @@ mod ga;
 
 // Re-export public items
 pub use physics::{PIXELS_PER_METER, RigidBodySnapshot, FLOOR_HALF_EXTENTS, FLOOR_HEIGHT};
-pub use buddy::{Buddy, BuddyPart, BuddyPartShape};
+pub use buddy::{
+    Buddy,
+    HEAD_RADIUS,
+    TORSO_WIDTH,
+    TORSO_HEIGHT,
+    ARM_THICKNESS,
+    UPPER_ARM_LENGTH,
+    LOWER_ARM_LENGTH,
+    LEG_THICKNESS,
+    UPPER_LEG_LENGTH,
+    LOWER_LEG_LENGTH,
+};
 pub use world::SimulationWorld;
-pub use grabbable_world::GrabbableWorld;
+pub use grabbable_world::{GrabbableWorld, BodyVisualShape};
 pub use rl_interface::{
     BuddyIO, BuddySense, BuddyAction, LimbSense, JointSense, 
     AngleSense, VelocitySense

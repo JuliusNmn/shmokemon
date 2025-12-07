@@ -1,7 +1,15 @@
 use macroquad::prelude::*;
 use two_dbuddy::{
-    BuddyPartShape, GrabbableWorld, FLOOR_HALF_EXTENTS, FLOOR_HEIGHT, PIXELS_PER_METER,
-    BuddyIO, BuddyAction, Brain, SPARSITY_INPUT_HIDDEN, SPARSITY_HIDDEN_OUTPUT,
+    GrabbableWorld,
+    BodyVisualShape,
+    FLOOR_HALF_EXTENTS,
+    FLOOR_HEIGHT,
+    PIXELS_PER_METER,
+    BuddyIO,
+    BuddyAction,
+    Brain,
+    SPARSITY_INPUT_HIDDEN,
+    SPARSITY_HIDDEN_OUTPUT,
 };
 use std::env;
 
@@ -238,12 +246,35 @@ fn draw_floor() {
 }
 
 fn draw_buddy(world: &GrabbableWorld) {
-    for part in world.buddy().parts() {
-        if let Some(snapshot) = world.body_snapshot(part.handle) {
-            match part.shape {
-                BuddyPartShape::Circle { radius } => draw_circle_part(&snapshot, radius as f32),
-                BuddyPartShape::Box { half_extents } => {
-                    draw_box_part(&snapshot, [half_extents[0] as f32, half_extents[1] as f32])
+    let buddy = world.buddy();
+
+    let handles = [
+        buddy.head,
+        buddy.torso,
+        buddy.front_arm_upper,
+        buddy.front_arm_lower,
+        buddy.back_arm_upper,
+        buddy.back_arm_lower,
+        buddy.front_leg_upper,
+        buddy.front_leg_lower,
+        buddy.back_leg_upper,
+        buddy.back_leg_lower,
+    ];
+
+    for handle in handles {
+        if let (Some(snapshot), Some(shape)) = (
+            world.body_snapshot(handle),
+            world.body_visual_shape(handle),
+        ) {
+            match shape {
+                BodyVisualShape::Circle { radius } => {
+                    draw_circle_part(&snapshot, radius as f32);
+                }
+                BodyVisualShape::Box { half_extents } => {
+                    draw_box_part(
+                        &snapshot,
+                        [half_extents[0] as f32, half_extents[1] as f32],
+                    );
                 }
             }
         }

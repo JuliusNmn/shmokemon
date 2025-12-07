@@ -6,6 +6,12 @@ use crate::physics::RigidBodySnapshot;
 use crate::rl_interface::{BuddySense, BuddyAction};
 use std::collections::VecDeque;
 
+#[derive(Debug, Clone, Copy)]
+pub enum BodyVisualShape {
+    Circle { radius: Real },
+    Box { half_extents: [Real; 2] },
+}
+
 /// State for grabbing/picking up the buddy
 #[derive(Debug, Clone)]
 pub struct GrabState {
@@ -37,18 +43,32 @@ impl GrabbableWorld {
         point![world_x as Real, world_y as Real]
     }
     
-    /// Query which buddy part (if any) was clicked at the given world point
+    /// Query which buddy body (if any) was clicked at the given world point
     fn query_buddy_part_at_point(&self, world_point: Point<Real>) -> Option<(RigidBodyHandle, Point<Real>)> {
-        // Check each buddy part's collider to see if the point intersects
-        for part in self.world.buddy.parts() {
+        let buddy = self.world.buddy();
+        let handles = [
+            buddy.torso,
+            buddy.head,
+            buddy.front_arm_upper,
+            buddy.front_arm_lower,
+            buddy.back_arm_upper,
+            buddy.back_arm_lower,
+            buddy.front_leg_upper,
+            buddy.front_leg_lower,
+            buddy.back_leg_upper,
+            buddy.back_leg_lower,
+        ];
+
+        // Check each buddy body part's collider to see if the point intersects
+        for body_handle in handles {
             // Find colliders attached to this body
             for (_collider_handle, collider) in self.world.collider_set.iter() {
-                if collider.parent() == Some(part.handle) {
+                if collider.parent() == Some(body_handle) {
                     // Check if point is inside the collider shape using intersection test
                     // Project the point onto the shape to see if it's inside
                     let proj = collider.shape().project_point(collider.position(), &world_point, false);
                     if (proj.point - world_point).norm() < 0.05 {
-                        return Some((part.handle, world_point));
+                        return Some((body_handle, world_point));
                     }
                 }
             }
@@ -180,6 +200,24 @@ impl GrabbableWorld {
     
     pub fn torque_history(&self) -> &VecDeque<Real> {
         self.world.torque_history()
+    }
+
+    /// Query an approximate visual shape (circle/box) for the given body handle,
+    /// based on the collider shape attached to that body.
+    pub fn body_visual_shape(&self, handle: RigidBodyHandle) -> Option<BodyVisualShape> {
+        for (_collider_handle, collider) in self.world.collider_set.iter() {
+            if collider.parent() == Some(handle) {
+                let shape = collider.shape();
+                if let Some(ball) = shape.as_ball() {
+                    return Some(BodyVisualShape::Circle { radius: ball.radius });
+                }
+                if let Some(cuboid) = shape.as_cuboid() {
+                    let he = cuboid.half_extents;
+                    return Some(BodyVisualShape::Box { half_extents: [he.x, he.y] });
+                }
+            }
+        }
+        None
     }
 }
 
