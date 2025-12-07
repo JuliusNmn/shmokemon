@@ -10,6 +10,8 @@ use two_dbuddy::{
     Brain,
     SPARSITY_INPUT_HIDDEN,
     SPARSITY_HIDDEN_OUTPUT,
+    SimulationWorld,
+    PhysicsStateStore,
 };
 use std::env;
 
@@ -42,18 +44,38 @@ async fn main() {
     request_new_screen_size(1400.0, 1000.0);
     
     // CLI usage (backwards compatible):
-    //   cargo run --release --bin visualize [--mps] [brain.bin] [step_limit]
+    //   cargo run --release --bin visualize [--mps] [--state-dir DIR] [--load-state FILE] [brain.bin] [step_limit]
     //   - If the first non-flag arg ends with ".bin", attempt to load the brain from that file
     //   - Otherwise, the first non-flag arg is interpreted as step_limit
     let raw_args: Vec<String> = env::args().skip(1).collect();
     let mut args: Vec<String> = Vec::new();
     let mut use_mps = false;
+    let mut state_dir: Option<String> = None;
+    let mut initial_state_file: Option<String> = None;
 
-    for arg in raw_args {
+    let mut i = 0;
+    while i < raw_args.len() {
+        let arg = &raw_args[i];
         if arg == "--mps" {
             use_mps = true;
+            i += 1;
+        } else if arg == "--state-dir" {
+            if i + 1 < raw_args.len() {
+                state_dir = Some(raw_args[i + 1].clone());
+                i += 2;
+            } else {
+                i += 1;
+            }
+        } else if arg == "--load-state" {
+            if i + 1 < raw_args.len() {
+                initial_state_file = Some(raw_args[i + 1].clone());
+                i += 2;
+            } else {
+                i += 1;
+            }
         } else {
-            args.push(arg);
+            args.push(arg.clone());
+            i += 1;
         }
     }
 
@@ -102,7 +124,20 @@ async fn main() {
         (None, init_params, brain)
     };
 
-    let mut world = GrabbableWorld::new();
+    let mut world = if let Some(state_path) = initial_state_file {
+        match SimulationWorld::from_file(&state_path) {
+            Ok(sim_world) => GrabbableWorld::from_world(sim_world),
+            Err(e) => {
+                eprintln!("Failed to load initial state from '{}': {}. Falling back to new world.", state_path, e);
+                GrabbableWorld::new()
+            }
+        }
+    } else {
+        GrabbableWorld::new()
+    };
+
+    let state_dir_path = state_dir.unwrap_or_else(|| "state_store".to_string());
+    let state_store = PhysicsStateStore::new(&state_dir_path);
     let mut steps = 0usize;
     let mut frame = 0usize;
     let mut gravity_enabled = true;
@@ -173,6 +208,11 @@ async fn main() {
 
         if ui_actions.restart_simulation {
             world = GrabbableWorld::new();
+            if gravity_enabled {
+                world.set_default_gravity();
+            } else {
+                world.set_zero_gravity();
+            }
             steps = 0;
             frame = 0;
         }
@@ -185,6 +225,11 @@ async fn main() {
                 init_params.ho_sparsity,
             );
             world = GrabbableWorld::new();
+            if gravity_enabled {
+                world.set_default_gravity();
+            } else {
+                world.set_zero_gravity();
+            }
             steps = 0;
             frame = 0;
         }
@@ -192,6 +237,11 @@ async fn main() {
         if ui_actions.mutate_brain {
             brain = brain.mutated(0.05, 0.1);
             world = GrabbableWorld::new();
+            if gravity_enabled {
+                world.set_default_gravity();
+            } else {
+                world.set_zero_gravity();
+            }
             steps = 0;
             frame = 0;
         }
@@ -207,6 +257,21 @@ async fn main() {
 
         if ui_actions.toggle_actions {
             actions_enabled = !actions_enabled;
+        }
+
+        if ui_actions.dump_state {
+            match state_store.dump_state(world.simulation_world()) {
+                Ok(path) => {
+                    println!("Dumped physics state to {}", path.display());
+                }
+                Err(e) => {
+                    eprintln!("Failed to dump physics state: {}", e);
+                }
+            }
+        }
+
+        if ui_actions.reset_velocities {
+            world.reset_velocities_and_torque();
         }
 
         frame += 1;
@@ -250,9 +315,9 @@ fn draw_world(
 
     // Controls legend (bottom middle)
     let controls_y = screen_height() - 30.0;
-    let controls_x = screen_width() * 0.5 - 360.0;
+    let controls_x = screen_width() * 0.5 - 470.0;
     draw_text(
-        "Controls: R - Restart  |  B - Reset (use sliders)  |  M - Mutate  |  G - Toggle gravity  |  W - Toggle actions",
+        "Controls: R - Restart  |  B - Reset (use sliders)  |  M - Mutate  |  G - Toggle gravity  |  W - Toggle actions  |  D - Dump state  |  S - Zero vels/torque",
         controls_x,
         controls_y,
         16.0,
@@ -802,6 +867,8 @@ struct UiActions {
     mutate_brain: bool,
     toggle_gravity: bool,
     toggle_actions: bool,
+    dump_state: bool,
+    reset_velocities: bool,
 }
 
 fn handle_ui_actions() -> UiActions {
@@ -811,6 +878,8 @@ fn handle_ui_actions() -> UiActions {
         mutate_brain: is_key_pressed(KeyCode::M),
         toggle_gravity: is_key_pressed(KeyCode::G),
         toggle_actions: is_key_pressed(KeyCode::W),
+        dump_state: is_key_pressed(KeyCode::D),
+        reset_velocities: is_key_pressed(KeyCode::S),
     }
 }
 

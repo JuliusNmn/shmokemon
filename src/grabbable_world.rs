@@ -36,6 +36,13 @@ impl GrabbableWorld {
         }
     }
     
+    pub fn from_world(world: SimulationWorld) -> Self {
+        Self {
+            world,
+            grab_state: None,
+        }
+    }
+    
     /// Convert screen coordinates to world coordinates
     pub fn screen_to_world(&self, screen_x: f32, screen_y: f32, screen_width: f32, screen_height: f32) -> Point<Real> {
         let world_x = (screen_x - screen_width * 0.5) / PIXELS_PER_METER as f32;
@@ -216,6 +223,14 @@ impl GrabbableWorld {
 
     pub fn set_default_gravity(&mut self) {
         self.world.set_gravity(vector![0.0, -9.81]);
+    }
+
+    pub fn simulation_world(&self) -> &SimulationWorld {
+        &self.world
+    }
+
+    pub fn reset_velocities_and_torque(&mut self) {
+        self.world.reset_velocities_and_torque();
     }
 
     /// Query an approximate visual shape (circle/box) for the given body handle,
