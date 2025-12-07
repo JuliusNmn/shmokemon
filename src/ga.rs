@@ -7,8 +7,13 @@ const FRAMES_PER_ROLLOUT: usize = 200;
 const ANGLE_PENALTY: f32 = 0.5;
 const VEL_PENALTY: f32 = 0.1;
 const ANGVEL_PENALTY: f32 = 0.1;
-const MUTATION_RATE: f32 = 0.2;
-const MUTATION_STRENGTH: f32 = 0.2;
+const MUTATION_RATE: f32 = 0.3;
+const MUTATION_STRENGTH: f32 = 2.0;
+
+const INITIAL_IH_GAIN: f64 = 1.0;
+const INITIAL_HO_GAIN: f64 = 1.0;
+const INITIAL_IH_SPARSITY: f32 = 0.95;
+const INITIAL_HO_SPARSITY: f32 = 0.95;
 
 fn evaluate_brain_upright(brain: &Brain) -> f32 {
     let mut world = SimulationWorld::new();
@@ -73,13 +78,13 @@ pub fn train_stand_upright(
             Err(err) => {
                 eprintln!("failed to load seed brain from {}: {} - falling back to random init", path, err);
                 (0..population_size)
-                    .map(|_| Brain::new(3.0, 4.0, 0.95, 0.95))
+                    .map(|_| Brain::new(INITIAL_IH_GAIN, INITIAL_HO_GAIN, INITIAL_IH_SPARSITY, INITIAL_HO_SPARSITY))
                     .collect()
             }
         }
     } else {
         (0..population_size)
-            .map(|_| Brain::new(3.0, 4.0, 0.95, 0.95))
+            .map(|_| Brain::new(INITIAL_IH_GAIN, INITIAL_HO_GAIN, INITIAL_IH_SPARSITY, INITIAL_HO_SPARSITY))
             .collect()
     };
 
@@ -133,7 +138,7 @@ pub fn train_stand_upright(
             let child = survivor.mutated(MUTATION_RATE, MUTATION_STRENGTH);
             new_population.push(survivor);
             new_population.push(child);
-            new_population.push(Brain::new(3.0, 4.0, 0.95, 0.95));
+            new_population.push(Brain::new(INITIAL_IH_GAIN, INITIAL_HO_GAIN, INITIAL_IH_SPARSITY, INITIAL_HO_SPARSITY));
         }
 
         // Fill the rest of the population with mutated copies of random elites
